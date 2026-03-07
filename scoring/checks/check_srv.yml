@@ -37,27 +37,32 @@
     Write-Output "disks=$disks,pool=$pool,r_exists=$rDrive,filesystem=$fs"
   register: raid_check
   ignore_errors: yes
+  tags: raid
 
 - name: "RAID - Score disks"
   set_fact:
     score_RAID01: "{{ 1 if 'disks=3' in (raid_check.stdout | default('')) or 'disks=4' in (raid_check.stdout | default('')) else 0 }}"
   ignore_errors: yes
+  tags: raid
 
 - name: "RAID - Score pool"
   set_fact:
     score_RAID02: "{{ 2 if 'pool=1' in (raid_check.stdout | default('')) or 'pool=2' in (raid_check.stdout | default('')) else 0 }}"
   ignore_errors: yes
+  tags: raid
 
 - name: "RAID - Score NTFS"
   set_fact:
     score_RAID03: "{{ 1 if 'filesystem=NTFS' in (raid_check.stdout | default('')) else 0 }}"
   ignore_errors: yes
+  tags: raid
 
 - name: "RAID - Score R drive"
   set_fact:
     score_RAID04: "{{ 1 if 'r_exists=True' in (raid_check.stdout | default('')) else 0 }}"
-    detail_RAID: "{{ raid_check.stdout | default('NOT CONFIGURED') | trim }}"
+    detail_RAID: "{{ raid_check.stdout | default('SKIPPED') | trim }}"
   ignore_errors: yes
+  tags: raid
 
 # ===== FILE SERVICE =====
 - name: "FS01-04 - Check shares exist"
