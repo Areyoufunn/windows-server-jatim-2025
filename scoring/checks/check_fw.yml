@@ -2,6 +2,7 @@
 # ==============================================================
 # SCORING: Check FW (fw.itnsa.id)
 # Basic Config, DHCP, Routing & NAT
+# ALL tasks have ignore_errors to ensure scoring never stops
 # ==============================================================
 
 # ===== BASIC CONFIG =====
@@ -13,6 +14,7 @@
 - name: "BC05 - Score"
   set_fact:
     score_BC05: "{{ 1 if (fw_hostname.stdout | default('') | trim | lower) == 'fw' else 0 }}"
+  ignore_errors: yes
 
 - name: "BC06 - Check FW Internal IP"
   ansible.windows.win_shell: |
@@ -23,6 +25,7 @@
 - name: "BC06 - Score"
   set_fact:
     score_BC06: "{{ 0.5 if (fw_int_ip.stdout | default('') | trim) == '172.16.0.254' else 0 }}"
+  ignore_errors: yes
 
 - name: "BC07 - Check FW External IP"
   ansible.windows.win_shell: |
@@ -33,6 +36,7 @@
 - name: "BC07 - Score"
   set_fact:
     score_BC07: "{{ 0.5 if (fw_ext_ip.stdout | default('') | trim) == '192.1.1.1' else 0 }}"
+  ignore_errors: yes
 
 # ===== DHCP =====
 - name: "DHCP01 - Check DHCP installed"
@@ -43,6 +47,7 @@
 - name: "DHCP01 - Score"
   set_fact:
     score_DHCP01: "{{ 1 if (dhcp_installed.stdout | default('') | trim) == 'True' else 0 }}"
+  ignore_errors: yes
 
 - name: "DHCP02-08 - Check DHCP scope config"
   ansible.windows.win_shell: |
@@ -81,7 +86,8 @@
     score_DHCP06: "{{ 1 if 'dns=172.16.0.1' in (dhcp_config.stdout | default('')) else 0 }}"
     score_DHCP07: "{{ 1 if 'domain=itnsa.id' in (dhcp_config.stdout | default('')) else 0 }}"
     score_DHCP08: "{{ 1 if '1d1h1m' in (dhcp_config.stdout | default('')) else 0 }}"
-    detail_DHCP: "{{ dhcp_config.stdout | default('N/A') | trim }}"
+    detail_DHCP: "{{ dhcp_config.stdout | default('NOT CONFIGURED') | trim }}"
+  ignore_errors: yes
 
 - name: "DHCP09 - Check dynamic DNS update"
   ansible.windows.win_shell: |
@@ -96,6 +102,7 @@
 - name: "DHCP09 - Score"
   set_fact:
     score_DHCP09: "{{ 2 if 'dynupdate=Always' in (dhcp_dns.stdout | default('')) or 'dynupdate=OnClientRequest' in (dhcp_dns.stdout | default('')) else 0 }}"
+  ignore_errors: yes
 
 # ===== ROUTING & NAT =====
 - name: "RT01 - Check RRAS installed"
@@ -106,19 +113,21 @@
 - name: "RT01 - Score"
   set_fact:
     score_RT01: "{{ 1 if (rras_installed.stdout | default('') | trim) == 'True' else 0 }}"
+  ignore_errors: yes
 
 - name: "RT02 - Check IP forwarding"
   ansible.windows.win_shell: |
-    $fwd = Get-NetIPInterface | Where-Object { $_.Forwarding -eq 'Enabled' -and $_.InterfaceAlias -notlike 'Loopback*' }
     $regFwd = (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters -Name IPEnableRouter -ErrorAction SilentlyContinue).IPEnableRouter
-    Write-Output "interfaces=$($fwd.Count),registry=$regFwd"
+    $svc = (Get-Service RemoteAccess -ErrorAction SilentlyContinue).Status
+    Write-Output "registry=$regFwd,rras_svc=$svc"
   register: ip_fwd
   ignore_errors: yes
 
 - name: "RT02 - Score"
   set_fact:
-    score_RT02: "{{ 2 if 'registry=1' in (ip_fwd.stdout | default('')) or (ip_fwd.stdout | default('') | regex_search('interfaces=(\\d+)', '\\1') | first | int) > 0 else 0 }}"
-    detail_RT02: "{{ ip_fwd.stdout | default('N/A') | trim }}"
+    score_RT02: "{{ 2 if 'registry=1' in (ip_fwd.stdout | default('')) else 0 }}"
+    detail_RT02: "{{ ip_fwd.stdout | default('NOT CONFIGURED') | trim }}"
+  ignore_errors: yes
 
 - name: "RT03 - Check NAT"
   ansible.windows.win_shell: |
@@ -132,4 +141,5 @@
 - name: "RT03 - Score"
   set_fact:
     score_RT03: "{{ 2 if 'nat=True' in (nat_check.stdout | default('')) else 0 }}"
-    detail_RT03: "{{ nat_check.stdout | default('N/A') | trim }}"
+    detail_RT03: "{{ nat_check.stdout | default('NOT CONFIGURED') | trim }}"
+  ignore_errors: yes

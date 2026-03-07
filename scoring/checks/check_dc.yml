@@ -14,6 +14,7 @@
   set_fact:
     score_BC01: "{{ 1 if (dc_hostname.stdout | default('') | trim | lower) == 'dc' else 0 }}"
     detail_BC01: "Hostname: {{ dc_hostname.stdout | default('N/A') | trim }}"
+  ignore_errors: yes
 
 - name: "BC02 - Check DC IP"
   ansible.windows.win_shell: |
@@ -25,6 +26,7 @@
   set_fact:
     score_BC02: "{{ 1 if (dc_ip.stdout | default('') | trim) == '172.16.0.1' else 0 }}"
     detail_BC02: "IP: {{ dc_ip.stdout | default('N/A') | trim }}"
+  ignore_errors: yes
 
 - name: "BC08 - Check timezone"
   ansible.windows.win_shell: "(Get-TimeZone).Id"
@@ -35,6 +37,7 @@
   set_fact:
     score_BC08: "{{ 2 if (dc_tz.stdout | default('') | trim) == 'SE Asia Standard Time' else 0 }}"
     detail_BC08: "Timezone: {{ dc_tz.stdout | default('N/A') | trim }}"
+  ignore_errors: yes
 
 # ===== ACTIVE DIRECTORY =====
 - name: "AD01 - Check domain exists"
@@ -46,6 +49,7 @@
   set_fact:
     score_AD01: "{{ 3 if (ad_domain.stdout | default('') | trim | lower) == 'itnsa.id' else 0 }}"
     detail_AD01: "Domain: {{ ad_domain.stdout | default('N/A') | trim }}"
+  ignore_errors: yes
 
 - name: "AD05-07 - Check OUs exist"
   ansible.windows.win_shell: |
@@ -67,6 +71,7 @@
     detail_AD05: "OU Direksi: {{ 'PASS' if 'Direksi=True' in (ad_ous.stdout | default('')) else 'FAIL' }}"
     detail_AD06: "OU Manager: {{ 'PASS' if 'Manager=True' in (ad_ous.stdout | default('')) else 'FAIL' }}"
     detail_AD07: "OU Karyawan: {{ 'PASS' if 'Karyawan=True' in (ad_ous.stdout | default('')) else 'FAIL' }}"
+  ignore_errors: yes
 
 - name: "AD08-10 - Check Groups in correct OUs"
   ansible.windows.win_shell: |
@@ -94,6 +99,7 @@
     detail_AD08: "Group Direksi in OU: {{ 'PASS' if 'Direksi=True' in (ad_groups.stdout | default('')) else 'FAIL' }}"
     detail_AD09: "Group Manager in OU: {{ 'PASS' if 'Manager=True' in (ad_groups.stdout | default('')) else 'FAIL' }}"
     detail_AD10: "Group Karyawan in OU: {{ 'PASS' if 'Karyawan=True' in (ad_groups.stdout | default('')) else 'FAIL' }}"
+  ignore_errors: yes
 
 - name: "AD11-13 - Check users exist with correct group"
   ansible.windows.win_shell: |
@@ -122,6 +128,7 @@
     score_AD12: "{{ 2 if 'mng=10/10' in (ad_users.stdout | default('')) else 0 }}"
     score_AD13: "{{ 2 if 'kyw=100/100' in (ad_users.stdout | default('')) else 0 }}"
     detail_AD11: "Direksi users: {{ ad_users.stdout | default('N/A') | trim }}"
+  ignore_errors: yes
 
 - name: "AD14 - Check home drive mapping"
   ansible.windows.win_shell: |
@@ -135,6 +142,7 @@
   set_fact:
     score_AD14: "{{ 2 if 'drive=H:' in (ad_home.stdout | default('')) and 'filesrv.itnsa.id' in (ad_home.stdout | default('')) else 0 }}"
     detail_AD14: "Home drive: {{ ad_home.stdout | default('N/A') | trim }}"
+  ignore_errors: yes
 
 - name: "AD15 - Check MAIN GPO"
   ansible.windows.win_shell: |
@@ -151,6 +159,7 @@
   set_fact:
     score_AD15: "{{ 1 if (ad_gpo.stdout | default('') | trim) == 'PASS' else 0 }}"
     detail_AD15: "MAIN GPO: {{ ad_gpo.stdout | default('N/A') | trim }}"
+  ignore_errors: yes
 
 # ===== DNS SERVICE =====
 - name: "DNS01-09 - Check DNS records"
@@ -193,6 +202,7 @@
     score_DNS08: "{{ 1 if 'PTR_10=PASS' in (dns_records.stdout | default('')) else 0 }}"
     score_DNS09: "{{ 1 if 'PTR_254=PASS' in (dns_records.stdout | default('')) else 0 }}"
     detail_DNS: "{{ dns_records.stdout | default('N/A') | trim }}"
+  ignore_errors: yes
 
 - name: "DNS10-11 - Check root hints and forwarders"
   ansible.windows.win_shell: |
@@ -204,9 +214,10 @@
 
 - name: "DNS10-11 - Score root hints and forwarders"
   set_fact:
-    score_DNS10: "{{ 2 if '192.1.1.100' in (dns_config.stdout | default('')) and (dns_config.stdout | default('') | regex_search('roothints=([^|]*)', '\\1') | first | trim).split(',') | length == 1 else 0 }}"
+    score_DNS10: "{{ 2 if 'roothints=192.1.1.100' in (dns_config.stdout | default('')) else 0 }}"
     score_DNS11: "{{ 2 if 'forwarders=192.1.1.100' in (dns_config.stdout | default('')) else 0 }}"
     detail_DNS10: "{{ dns_config.stdout | default('N/A') | trim }}"
+  ignore_errors: yes
 
 - name: "DNS12 - Check NS record"
   ansible.windows.win_shell: |
@@ -218,6 +229,7 @@
 - name: "DNS12 - Score NS"
   set_fact:
     score_DNS12: "{{ 1 if (dns_ns.stdout | default('') | trim) == 'PASS' else 0 }}"
+  ignore_errors: yes
 
 # ===== CERTIFICATE AUTHORITY =====
 - name: "CA01-02 - Check CA"
@@ -236,6 +248,7 @@
     score_CA01: "{{ 1 if 'installed=True' in (ca_check.stdout | default('')) else 0 }}"
     score_CA02: "{{ 3 if 'name_ok=True' in (ca_check.stdout | default('')) else 0 }}"
     detail_CA: "{{ ca_check.stdout | default('N/A') | trim }}"
+  ignore_errors: yes
 
 - name: "CA03 - Check CA cert distributed"
   ansible.windows.win_shell: |
@@ -247,6 +260,7 @@
 - name: "CA03 - Score CA distribution"
   set_fact:
     score_CA03: "{{ 2 if (ca_dist.stdout | default('') | trim) == 'PASS' else 0 }}"
+  ignore_errors: yes
 
 # ===== DOMAIN JOIN (check from DC) =====
 - name: "AD02-04 - Check domain joined hosts"
@@ -264,3 +278,4 @@
     score_AD03: "{{ 1 if 'fw=True' in (domain_joined.stdout | default('')) else 0 }}"
     score_AD04: "{{ 1 if 'ws=True' in (domain_joined.stdout | default('')) else 0 }}"
     detail_AD02: "Domain join: {{ domain_joined.stdout | default('N/A') | trim }}"
+  ignore_errors: yes

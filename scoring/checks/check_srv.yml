@@ -2,6 +2,7 @@
 # ==============================================================
 # SCORING: Check SRV (srv.itnsa.id)
 # Basic Config, RAID, File Service, IIS
+# ALL tasks have ignore_errors to ensure scoring never stops
 # ==============================================================
 
 # ===== BASIC CONFIG =====
@@ -13,6 +14,7 @@
 - name: "BC03 - Score"
   set_fact:
     score_BC03: "{{ 1 if (srv_hostname.stdout | default('') | trim | lower) == 'srv' else 0 }}"
+  ignore_errors: yes
 
 - name: "BC04 - Check SRV IP"
   ansible.windows.win_shell: |
@@ -23,25 +25,39 @@
 - name: "BC04 - Score"
   set_fact:
     score_BC04: "{{ 1 if (srv_ip.stdout | default('') | trim) == '172.16.0.10' else 0 }}"
+  ignore_errors: yes
 
 # ===== RAID =====
 - name: "RAID01-04 - Check RAID and R: drive"
   ansible.windows.win_shell: |
-    $disks = (Get-PhysicalDisk | Where-Object { $_.Size -gt 9GB -and $_.Size -lt 11GB }).Count
-    $pool = (Get-StoragePool | Where-Object { $_.FriendlyName -ne 'Primordial' }).Count
+    $disks = @(Get-PhysicalDisk | Where-Object { $_.Size -gt 9GB -and $_.Size -lt 11GB }).Count
+    $pool = @(Get-StoragePool | Where-Object { $_.FriendlyName -ne 'Primordial' }).Count
     $rDrive = Test-Path "R:\"
-    $fs = if($rDrive) { (Get-Volume -DriveLetter R -ErrorAction SilentlyContinue).FileSystemType } else { 'N/A' }
+    $fs = if($rDrive) { (Get-Volume -DriveLetter R -ErrorAction SilentlyContinue).FileSystemType } else { 'NONE' }
     Write-Output "disks=$disks,pool=$pool,r_exists=$rDrive,filesystem=$fs"
   register: raid_check
   ignore_errors: yes
 
-- name: "RAID - Score"
+- name: "RAID - Score disks"
   set_fact:
-    score_RAID01: "{{ 1 if (raid_check.stdout | default('') | regex_search('disks=(\\d+)', '\\1') | first | int) >= 3 else 0 }}"
+    score_RAID01: "{{ 1 if 'disks=3' in (raid_check.stdout | default('')) or 'disks=4' in (raid_check.stdout | default('')) else 0 }}"
+  ignore_errors: yes
+
+- name: "RAID - Score pool"
+  set_fact:
     score_RAID02: "{{ 2 if 'pool=1' in (raid_check.stdout | default('')) or 'pool=2' in (raid_check.stdout | default('')) else 0 }}"
+  ignore_errors: yes
+
+- name: "RAID - Score NTFS"
+  set_fact:
     score_RAID03: "{{ 1 if 'filesystem=NTFS' in (raid_check.stdout | default('')) else 0 }}"
+  ignore_errors: yes
+
+- name: "RAID - Score R drive"
+  set_fact:
     score_RAID04: "{{ 1 if 'r_exists=True' in (raid_check.stdout | default('')) else 0 }}"
-    detail_RAID: "{{ raid_check.stdout | default('N/A') | trim }}"
+    detail_RAID: "{{ raid_check.stdout | default('NOT CONFIGURED') | trim }}"
+  ignore_errors: yes
 
 # ===== FILE SERVICE =====
 - name: "FS01-04 - Check shares exist"
@@ -63,7 +79,8 @@
     score_FS02: "{{ 1 if 'Manager=EXISTS' in (fs_shares.stdout | default('')) else 0 }}"
     score_FS03: "{{ 1 if 'Karyawan=EXISTS' in (fs_shares.stdout | default('')) else 0 }}"
     score_FS04: "{{ 1 if 'Home=EXISTS' in (fs_shares.stdout | default('')) else 0 }}"
-    detail_FS_shares: "{{ fs_shares.stdout | default('N/A') | trim }}"
+    detail_FS_shares: "{{ fs_shares.stdout | default('NOT CONFIGURED') | trim }}"
+  ignore_errors: yes
 
 - name: "FS05-08 - Check share permissions"
   ansible.windows.win_shell: |
@@ -89,6 +106,7 @@
     score_FS06: "{{ 1 if 'Manager_perm=PASS' in (fs_perms.stdout | default('')) else 0 }}"
     score_FS07: "{{ 1 if 'Karyawan_perm=PASS' in (fs_perms.stdout | default('')) else 0 }}"
     score_FS08: "{{ 1 if 'Home_perm=PASS' in (fs_perms.stdout | default('')) else 0 }}"
+  ignore_errors: yes
 
 - name: "FS09-10 - Check quotas"
   ansible.windows.win_shell: |
@@ -112,7 +130,8 @@
   set_fact:
     score_FS09: "{{ 2 if 'Direksi_quota=100MB' in (fs_quotas.stdout | default('')) and 'Manager_quota=100MB' in (fs_quotas.stdout | default('')) and 'Karyawan_quota=100MB' in (fs_quotas.stdout | default('')) else 0 }}"
     score_FS10: "{{ 1 if 'Home_quota=50MB' in (fs_quotas.stdout | default('')) else 0 }}"
-    detail_FS_quotas: "{{ fs_quotas.stdout | default('N/A') | trim }}"
+    detail_FS_quotas: "{{ fs_quotas.stdout | default('NOT CONFIGURED') | trim }}"
+  ignore_errors: yes
 
 - name: "FS11 - Check file screen"
   ansible.windows.win_shell: |
@@ -120,7 +139,7 @@
     $groups = Get-FsrmFileGroup -ErrorAction SilentlyContinue
     $blocksBat = $groups | Where-Object { $_.IncludePattern -contains '*.bat' }
     $blocksPs1 = $groups | Where-Object { $_.IncludePattern -contains '*.ps1' }
-    $screenCount = ($screens | Where-Object { $_.Path -like 'R:\Shares\*' }).Count
+    $screenCount = @($screens | Where-Object { $_.Path -like 'R:\Shares\*' }).Count
     Write-Output "screens=$screenCount,bat=$([bool]$blocksBat),ps1=$([bool]$blocksPs1)"
   register: fs_screen
   ignore_errors: yes
@@ -128,7 +147,8 @@
 - name: "FS11 - Score file screen"
   set_fact:
     score_FS11: "{{ 2 if 'bat=True' in (fs_screen.stdout | default('')) and 'ps1=True' in (fs_screen.stdout | default('')) else 0 }}"
-    detail_FS_screen: "{{ fs_screen.stdout | default('N/A') | trim }}"
+    detail_FS_screen: "{{ fs_screen.stdout | default('NOT CONFIGURED') | trim }}"
+  ignore_errors: yes
 
 # ===== IIS WEB SERVICE =====
 - name: "IIS01 - Check IIS installed"
@@ -139,6 +159,7 @@
 - name: "IIS01 - Score"
   set_fact:
     score_IIS01: "{{ 1 if (iis_installed.stdout | default('') | trim) == 'True' else 0 }}"
+  ignore_errors: yes
 
 - name: "IIS02-07 - Check websites"
   ansible.windows.win_shell: |
@@ -179,4 +200,5 @@
     score_IIS06: "{{ 1 if 'priv_content=PASS' in (iis_sites.stdout | default('')) else 0 }}"
     score_IIS07: "{{ 2 if 'priv_ssl=True' in (iis_sites.stdout | default('')) else 0 }}"
     score_IIS08: "{{ 1 if 'priv_winauth=True' in (iis_sites.stdout | default('')) and 'priv_anon=False' in (iis_sites.stdout | default('')) else 0 }}"
-    detail_IIS: "{{ iis_sites.stdout | default('N/A') | trim }}"
+    detail_IIS: "{{ iis_sites.stdout | default('NOT CONFIGURED') | trim }}"
+  ignore_errors: yes

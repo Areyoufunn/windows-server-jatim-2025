@@ -23,3 +23,4 @@
   set_fact:
     score_RT04: "{{ 1 if 'PASS' in (ws_internet.stdout | default('')) else 0 }}"
     detail_RT04: "Internet access: {{ ws_internet.stdout | default('N/A') | trim }}"
+  ignore_errors: yes
