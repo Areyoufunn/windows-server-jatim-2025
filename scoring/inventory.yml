@@ -3,19 +3,19 @@ all:
     dc_servers:
       hosts:
         dc:
-          ansible_host: 10.0.0.1
+          ansible_host: 172.16.0.1
     app_servers:
       hosts:
         srv:
-          ansible_host: 10.0.0.2
+          ansible_host: 172.16.0.10
     firewall_servers:
       hosts:
         fw:
-          ansible_host: 10.0.0.3
+          ansible_host: 172.16.0.254
     workstations:
       hosts:
         workstation:
-          ansible_host: 10.0.0.4
+          ansible_host: 172.16.0.100
 
     # Group semua Windows hosts
     windows:
