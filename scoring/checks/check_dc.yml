@@ -1,0 +1,266 @@
+---
+# ==============================================================
+# SCORING: Check DC (dc.itnsa.id)
+# Basic Config, AD, DNS, CA, GPO
+# ==============================================================
+
+# ===== BASIC CONFIG =====
+- name: "BC01 - Check DC hostname"
+  ansible.windows.win_shell: "(hostname).ToLower()"
+  register: dc_hostname
+  ignore_errors: yes
+
+- name: "BC01 - Score DC hostname"
+  set_fact:
+    score_BC01: "{{ 1 if (dc_hostname.stdout | default('') | trim | lower) == 'dc' else 0 }}"
+    detail_BC01: "Hostname: {{ dc_hostname.stdout | default('N/A') | trim }}"
+
+- name: "BC02 - Check DC IP"
+  ansible.windows.win_shell: |
+    (Get-NetIPAddress -InterfaceAlias "Ethernet0","Ethernet 0" -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress
+  register: dc_ip
+  ignore_errors: yes
+
+- name: "BC02 - Score DC IP"
+  set_fact:
+    score_BC02: "{{ 1 if (dc_ip.stdout | default('') | trim) == '172.16.0.1' else 0 }}"
+    detail_BC02: "IP: {{ dc_ip.stdout | default('N/A') | trim }}"
+
+- name: "BC08 - Check timezone"
+  ansible.windows.win_shell: "(Get-TimeZone).Id"
+  register: dc_tz
+  ignore_errors: yes
+
+- name: "BC08 - Score timezone"
+  set_fact:
+    score_BC08: "{{ 2 if (dc_tz.stdout | default('') | trim) == 'SE Asia Standard Time' else 0 }}"
+    detail_BC08: "Timezone: {{ dc_tz.stdout | default('N/A') | trim }}"
+
+# ===== ACTIVE DIRECTORY =====
+- name: "AD01 - Check domain exists"
+  ansible.windows.win_shell: "(Get-ADDomain).DNSRoot"
+  register: ad_domain
+  ignore_errors: yes
+
+- name: "AD01 - Score domain"
+  set_fact:
+    score_AD01: "{{ 3 if (ad_domain.stdout | default('') | trim | lower) == 'itnsa.id' else 0 }}"
+    detail_AD01: "Domain: {{ ad_domain.stdout | default('N/A') | trim }}"
+
+- name: "AD05-07 - Check OUs exist"
+  ansible.windows.win_shell: |
+    $ous = @('Direksi','Manager','Karyawan')
+    $results = @()
+    foreach ($ou in $ous) {
+        $exists = Get-ADOrganizationalUnit -Filter "Name -eq '$ou'" -ErrorAction SilentlyContinue
+        $results += "$ou=$([bool]$exists)"
+    }
+    $results -join ','
+  register: ad_ous
+  ignore_errors: yes
+
+- name: "AD05-07 - Score OUs"
+  set_fact:
+    score_AD05: "{{ 1 if 'Direksi=True' in (ad_ous.stdout | default('')) else 0 }}"
+    score_AD06: "{{ 1 if 'Manager=True' in (ad_ous.stdout | default('')) else 0 }}"
+    score_AD07: "{{ 1 if 'Karyawan=True' in (ad_ous.stdout | default('')) else 0 }}"
+    detail_AD05: "OU Direksi: {{ 'PASS' if 'Direksi=True' in (ad_ous.stdout | default('')) else 'FAIL' }}"
+    detail_AD06: "OU Manager: {{ 'PASS' if 'Manager=True' in (ad_ous.stdout | default('')) else 'FAIL' }}"
+    detail_AD07: "OU Karyawan: {{ 'PASS' if 'Karyawan=True' in (ad_ous.stdout | default('')) else 'FAIL' }}"
+
+- name: "AD08-10 - Check Groups in correct OUs"
+  ansible.windows.win_shell: |
+    $checks = @()
+    $groups = @{
+        'Direksi' = 'OU=Direksi,DC=itnsa,DC=id'
+        'Manager' = 'OU=Manager,DC=itnsa,DC=id'
+        'Karyawan' = 'OU=Karyawan,DC=itnsa,DC=id'
+    }
+    foreach ($g in $groups.Keys) {
+        $grp = Get-ADGroup -Filter "Name -eq '$g'" -ErrorAction SilentlyContinue
+        $inOU = $false
+        if ($grp) { $inOU = $grp.DistinguishedName -like "*$($groups[$g])*" }
+        $checks += "$g=$inOU"
+    }
+    $checks -join ','
+  register: ad_groups
+  ignore_errors: yes
+
+- name: "AD08-10 - Score Groups"
+  set_fact:
+    score_AD08: "{{ 1 if 'Direksi=True' in (ad_groups.stdout | default('')) else 0 }}"
+    score_AD09: "{{ 1 if 'Manager=True' in (ad_groups.stdout | default('')) else 0 }}"
+    score_AD10: "{{ 1 if 'Karyawan=True' in (ad_groups.stdout | default('')) else 0 }}"
+    detail_AD08: "Group Direksi in OU: {{ 'PASS' if 'Direksi=True' in (ad_groups.stdout | default('')) else 'FAIL' }}"
+    detail_AD09: "Group Manager in OU: {{ 'PASS' if 'Manager=True' in (ad_groups.stdout | default('')) else 'FAIL' }}"
+    detail_AD10: "Group Karyawan in OU: {{ 'PASS' if 'Karyawan=True' in (ad_groups.stdout | default('')) else 'FAIL' }}"
+
+- name: "AD11-13 - Check users exist with correct group"
+  ansible.windows.win_shell: |
+    $drsOK = 0; $drsTotal = 3
+    for ($i = 1; $i -le 3; $i++) {
+        $u = Get-ADUser -Filter "SamAccountName -eq 'drs$i'" -Properties MemberOf -ErrorAction SilentlyContinue
+        if ($u -and ($u.MemberOf -match 'Direksi')) { $drsOK++ }
+    }
+    $mngOK = 0; $mngTotal = 10
+    for ($i = 1; $i -le 10; $i++) {
+        $u = Get-ADUser -Filter "SamAccountName -eq 'mng$i'" -Properties MemberOf -ErrorAction SilentlyContinue
+        if ($u -and ($u.MemberOf -match 'Manager')) { $mngOK++ }
+    }
+    $kywOK = 0; $kywTotal = 100
+    for ($i = 1; $i -le 100; $i++) {
+        $u = Get-ADUser -Filter "SamAccountName -eq 'kyw$i'" -Properties MemberOf -ErrorAction SilentlyContinue
+        if ($u -and ($u.MemberOf -match 'Karyawan')) { $kywOK++ }
+    }
+    Write-Output "drs=$drsOK/$drsTotal,mng=$mngOK/$mngTotal,kyw=$kywOK/$kywTotal"
+  register: ad_users
+  ignore_errors: yes
+
+- name: "AD11-13 - Score users"
+  set_fact:
+    score_AD11: "{{ 1 if 'drs=3/3' in (ad_users.stdout | default('')) else 0 }}"
+    score_AD12: "{{ 2 if 'mng=10/10' in (ad_users.stdout | default('')) else 0 }}"
+    score_AD13: "{{ 2 if 'kyw=100/100' in (ad_users.stdout | default('')) else 0 }}"
+    detail_AD11: "Direksi users: {{ ad_users.stdout | default('N/A') | trim }}"
+
+- name: "AD14 - Check home drive mapping"
+  ansible.windows.win_shell: |
+    $u = Get-ADUser drs1 -Properties HomeDirectory, HomeDrive -ErrorAction SilentlyContinue
+    if ($u) { Write-Output "drive=$($u.HomeDrive),path=$($u.HomeDirectory)" }
+    else { Write-Output "NOT_FOUND" }
+  register: ad_home
+  ignore_errors: yes
+
+- name: "AD14 - Score home drive"
+  set_fact:
+    score_AD14: "{{ 2 if 'drive=H:' in (ad_home.stdout | default('')) and 'filesrv.itnsa.id' in (ad_home.stdout | default('')) else 0 }}"
+    detail_AD14: "Home drive: {{ ad_home.stdout | default('N/A') | trim }}"
+
+- name: "AD15 - Check MAIN GPO"
+  ansible.windows.win_shell: |
+    $gpo = Get-GPO -Name "MAIN GPO" -ErrorAction SilentlyContinue
+    if ($gpo) {
+        $val = Get-GPRegistryValue -Name "MAIN GPO" -Key "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -ValueName "EnableFirstLogonAnimation" -ErrorAction SilentlyContinue
+        if ($val -and $val.Value -eq 0) { Write-Output "PASS" }
+        else { Write-Output "GPO_EXISTS_BUT_VALUE_WRONG" }
+    } else { Write-Output "FAIL" }
+  register: ad_gpo
+  ignore_errors: yes
+
+- name: "AD15 - Score GPO"
+  set_fact:
+    score_AD15: "{{ 1 if (ad_gpo.stdout | default('') | trim) == 'PASS' else 0 }}"
+    detail_AD15: "MAIN GPO: {{ ad_gpo.stdout | default('N/A') | trim }}"
+
+# ===== DNS SERVICE =====
+- name: "DNS01-09 - Check DNS records"
+  ansible.windows.win_shell: |
+    $results = @()
+    # A records
+    $a_dc = Resolve-DnsName dc.itnsa.id -Type A -Server 127.0.0.1 -ErrorAction SilentlyContinue
+    $results += "A_dc=$(if($a_dc.IPAddress -contains '172.16.0.1'){'PASS'}else{'FAIL'})"
+    $a_srv = Resolve-DnsName srv.itnsa.id -Type A -Server 127.0.0.1 -ErrorAction SilentlyContinue
+    $results += "A_srv=$(if($a_srv.IPAddress -contains '172.16.0.10'){'PASS'}else{'FAIL'})"
+    $a_fw = Resolve-DnsName fw.itnsa.id -Type A -Server 127.0.0.1 -ErrorAction SilentlyContinue
+    $results += "A_fw=$(if($a_fw.IPAddress -contains '172.16.0.254'){'PASS'}else{'FAIL'})"
+    # CNAME records
+    $c_www = Resolve-DnsName www.itnsa.id -Type CNAME -Server 127.0.0.1 -ErrorAction SilentlyContinue
+    $results += "CNAME_www=$(if($c_www.NameHost -match 'srv.itnsa.id'){'PASS'}else{'FAIL'})"
+    $c_priv = Resolve-DnsName private.itnsa.id -Type CNAME -Server 127.0.0.1 -ErrorAction SilentlyContinue
+    $results += "CNAME_priv=$(if($c_priv.NameHost -match 'srv.itnsa.id'){'PASS'}else{'FAIL'})"
+    $c_file = Resolve-DnsName filesrv.itnsa.id -Type CNAME -Server 127.0.0.1 -ErrorAction SilentlyContinue
+    $results += "CNAME_file=$(if($c_file.NameHost -match 'srv.itnsa.id'){'PASS'}else{'FAIL'})"
+    # PTR records
+    $p1 = Resolve-DnsName 1.0.16.172.in-addr.arpa -Type PTR -Server 127.0.0.1 -ErrorAction SilentlyContinue
+    $results += "PTR_1=$(if($p1.NameHost -match 'dc.itnsa.id'){'PASS'}else{'FAIL'})"
+    $p10 = Resolve-DnsName 10.0.16.172.in-addr.arpa -Type PTR -Server 127.0.0.1 -ErrorAction SilentlyContinue
+    $results += "PTR_10=$(if($p10.NameHost -match 'srv.itnsa.id'){'PASS'}else{'FAIL'})"
+    $p254 = Resolve-DnsName 254.0.16.172.in-addr.arpa -Type PTR -Server 127.0.0.1 -ErrorAction SilentlyContinue
+    $results += "PTR_254=$(if($p254.NameHost -match 'fw.itnsa.id'){'PASS'}else{'FAIL'})"
+    $results -join ','
+  register: dns_records
+  ignore_errors: yes
+
+- name: "DNS01-09 - Score DNS records"
+  set_fact:
+    score_DNS01: "{{ 1 if 'A_dc=PASS' in (dns_records.stdout | default('')) else 0 }}"
+    score_DNS02: "{{ 1 if 'A_srv=PASS' in (dns_records.stdout | default('')) else 0 }}"
+    score_DNS03: "{{ 1 if 'A_fw=PASS' in (dns_records.stdout | default('')) else 0 }}"
+    score_DNS04: "{{ 1 if 'CNAME_www=PASS' in (dns_records.stdout | default('')) else 0 }}"
+    score_DNS05: "{{ 1 if 'CNAME_priv=PASS' in (dns_records.stdout | default('')) else 0 }}"
+    score_DNS06: "{{ 1 if 'CNAME_file=PASS' in (dns_records.stdout | default('')) else 0 }}"
+    score_DNS07: "{{ 1 if 'PTR_1=PASS' in (dns_records.stdout | default('')) else 0 }}"
+    score_DNS08: "{{ 1 if 'PTR_10=PASS' in (dns_records.stdout | default('')) else 0 }}"
+    score_DNS09: "{{ 1 if 'PTR_254=PASS' in (dns_records.stdout | default('')) else 0 }}"
+    detail_DNS: "{{ dns_records.stdout | default('N/A') | trim }}"
+
+- name: "DNS10-11 - Check root hints and forwarders"
+  ansible.windows.win_shell: |
+    $rh = (Get-DnsServerRootHint | ForEach-Object { $_.IPAddress.IPAddressToString }) -join ','
+    $fwd = ((Get-DnsServerForwarder).IPAddress.IPAddressToString) -join ','
+    Write-Output "roothints=$rh|forwarders=$fwd"
+  register: dns_config
+  ignore_errors: yes
+
+- name: "DNS10-11 - Score root hints and forwarders"
+  set_fact:
+    score_DNS10: "{{ 2 if '192.1.1.100' in (dns_config.stdout | default('')) and (dns_config.stdout | default('') | regex_search('roothints=([^|]*)', '\\1') | first | trim).split(',') | length == 1 else 0 }}"
+    score_DNS11: "{{ 2 if 'forwarders=192.1.1.100' in (dns_config.stdout | default('')) else 0 }}"
+    detail_DNS10: "{{ dns_config.stdout | default('N/A') | trim }}"
+
+- name: "DNS12 - Check NS record"
+  ansible.windows.win_shell: |
+    $ns = Get-DnsServerResourceRecord -ZoneName "itnsa.id" -RRType NS -ErrorAction SilentlyContinue
+    if ($ns.RecordData.NameServer -match 'dc.itnsa.id') { 'PASS' } else { 'FAIL' }
+  register: dns_ns
+  ignore_errors: yes
+
+- name: "DNS12 - Score NS"
+  set_fact:
+    score_DNS12: "{{ 1 if (dns_ns.stdout | default('') | trim) == 'PASS' else 0 }}"
+
+# ===== CERTIFICATE AUTHORITY =====
+- name: "CA01-02 - Check CA"
+  ansible.windows.win_shell: |
+    $svc = Get-Service CertSvc -ErrorAction SilentlyContinue
+    $installed = ($svc -ne $null)
+    $running = ($svc.Status -eq 'Running')
+    $ca = certutil -CAInfo name 2>$null
+    $isITNSA = ($ca -match 'ITNSA-CA')
+    Write-Output "installed=$installed,running=$running,name_ok=$isITNSA"
+  register: ca_check
+  ignore_errors: yes
+
+- name: "CA01-02 - Score CA"
+  set_fact:
+    score_CA01: "{{ 1 if 'installed=True' in (ca_check.stdout | default('')) else 0 }}"
+    score_CA02: "{{ 3 if 'name_ok=True' in (ca_check.stdout | default('')) else 0 }}"
+    detail_CA: "{{ ca_check.stdout | default('N/A') | trim }}"
+
+- name: "CA03 - Check CA cert distributed"
+  ansible.windows.win_shell: |
+    $certs = Get-ChildItem Cert:\LocalMachine\Root | Where-Object { $_.Subject -match 'ITNSA-CA' }
+    if ($certs) { 'PASS' } else { 'FAIL' }
+  register: ca_dist
+  ignore_errors: yes
+
+- name: "CA03 - Score CA distribution"
+  set_fact:
+    score_CA03: "{{ 2 if (ca_dist.stdout | default('') | trim) == 'PASS' else 0 }}"
+
+# ===== DOMAIN JOIN (check from DC) =====
+- name: "AD02-04 - Check domain joined hosts"
+  ansible.windows.win_shell: |
+    $srv = Get-ADComputer -Filter "Name -eq 'srv'" -ErrorAction SilentlyContinue
+    $fw = Get-ADComputer -Filter "Name -eq 'fw'" -ErrorAction SilentlyContinue
+    $ws = Get-ADComputer -Filter "Name -eq 'workstation'" -ErrorAction SilentlyContinue
+    Write-Output "srv=$([bool]$srv),fw=$([bool]$fw),ws=$([bool]$ws)"
+  register: domain_joined
+  ignore_errors: yes
+
+- name: "AD02-04 - Score domain join"
+  set_fact:
+    score_AD02: "{{ 1 if 'srv=True' in (domain_joined.stdout | default('')) else 0 }}"
+    score_AD03: "{{ 1 if 'fw=True' in (domain_joined.stdout | default('')) else 0 }}"
+    score_AD04: "{{ 1 if 'ws=True' in (domain_joined.stdout | default('')) else 0 }}"
+    detail_AD02: "Domain join: {{ domain_joined.stdout | default('N/A') | trim }}"

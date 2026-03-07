@@ -1,0 +1,221 @@
+---
+# ==============================================================
+# Role: iis_service
+# Configure IIS websites with SSL on srv.itnsa.id
+# ==============================================================
+
+# --- Install IIS Features ---
+- name: Install IIS Web Server features
+  ansible.windows.win_feature:
+    name:
+      - Web-Server
+      - Web-Mgmt-Tools
+      - Web-Mgmt-Console
+      - Web-Scripting-Tools
+      - Web-Windows-Auth
+      - Web-Basic-Auth
+      - Web-Url-Auth
+    state: present
+    include_management_tools: yes
+
+# --- Create Website Directories ---
+- name: Create www website root directory
+  ansible.windows.win_file:
+    path: 'R:\inetpub\www'
+    state: directory
+
+- name: Create private website root directory
+  ansible.windows.win_file:
+    path: 'R:\inetpub\private'
+    state: directory
+
+# --- Create Website Content ---
+- name: Create www.itnsa.id index page
+  ansible.windows.win_copy:
+    content: "Welcome to www.itnsa.id"
+    dest: 'R:\inetpub\www\index.html'
+
+- name: Create private.itnsa.id index page
+  ansible.windows.win_copy:
+    content: "Private site of itnsa.id"
+    dest: 'R:\inetpub\private\index.html'
+
+# --- Request SSL Certificates from ITNSA-CA ---
+- name: Request SSL certificate for www.itnsa.id
+  ansible.windows.win_shell: |
+    # Create certificate request INF file for www
+    $inf = @"
+    [Version]
+    Signature="`$Windows NT`$"
+    [NewRequest]
+    Subject = "CN=www.itnsa.id"
+    KeyLength = 2048
+    Exportable = TRUE
+    MachineKeySet = TRUE
+    SMIME = FALSE
+    PrivateKeyArchive = FALSE
+    UserProtected = FALSE
+    UseExistingKeySet = FALSE
+    ProviderName = "Microsoft RSA SChannel Cryptographic Provider"
+    ProviderType = 12
+    RequestType = CMC
+    KeyUsage = 0xa0
+    [EnhancedKeyUsageExtension]
+    OID=1.3.6.1.5.5.7.3.1
+    [Extensions]
+    2.5.29.17 = "{text}"
+    _continue_ = "dns=www.itnsa.id&"
+    "@
+    $inf | Out-File -FilePath "C:\www_cert.inf" -Encoding ASCII
+
+    # Generate certificate request
+    certreq -new "C:\www_cert.inf" "C:\www_cert.req"
+
+    # Submit to CA and auto-approve
+    $result = certreq -submit -config "dc.itnsa.id\{{ ca_common_name }}" "C:\www_cert.req" "C:\www_cert.cer"
+
+    # Accept the certificate
+    certreq -accept "C:\www_cert.cer"
+
+    Write-Output "SSL certificate for www.itnsa.id requested and installed"
+  ignore_errors: yes
+
+- name: Request SSL certificate for private.itnsa.id
+  ansible.windows.win_shell: |
+    $inf = @"
+    [Version]
+    Signature="`$Windows NT`$"
+    [NewRequest]
+    Subject = "CN=private.itnsa.id"
+    KeyLength = 2048
+    Exportable = TRUE
+    MachineKeySet = TRUE
+    SMIME = FALSE
+    PrivateKeyArchive = FALSE
+    UserProtected = FALSE
+    UseExistingKeySet = FALSE
+    ProviderName = "Microsoft RSA SChannel Cryptographic Provider"
+    ProviderType = 12
+    RequestType = CMC
+    KeyUsage = 0xa0
+    [EnhancedKeyUsageExtension]
+    OID=1.3.6.1.5.5.7.3.1
+    [Extensions]
+    2.5.29.17 = "{text}"
+    _continue_ = "dns=private.itnsa.id&"
+    "@
+    $inf | Out-File -FilePath "C:\private_cert.inf" -Encoding ASCII
+    certreq -new "C:\private_cert.inf" "C:\private_cert.req"
+    $result = certreq -submit -config "dc.itnsa.id\{{ ca_common_name }}" "C:\private_cert.req" "C:\private_cert.cer"
+    certreq -accept "C:\private_cert.cer"
+    Write-Output "SSL certificate for private.itnsa.id requested and installed"
+  ignore_errors: yes
+
+# --- Remove Default Website ---
+- name: Remove Default Web Site
+  ansible.windows.win_shell: |
+    Import-Module WebAdministration
+    $defaultSite = Get-Website -Name "Default Web Site" -ErrorAction SilentlyContinue
+    if ($defaultSite) {
+        Remove-Website -Name "Default Web Site"
+    }
+  ignore_errors: yes
+
+# --- Create www.itnsa.id Website ---
+- name: Create www.itnsa.id website
+  ansible.windows.win_iis_website:
+    name: "www.itnsa.id"
+    physical_path: 'R:\inetpub\www'
+    port: 443
+    ssl: yes
+    state: started
+    hostname: "www.itnsa.id"
+
+- name: Add HTTP binding for www.itnsa.id
+  ansible.windows.win_iis_webbinding:
+    name: "www.itnsa.id"
+    protocol: http
+    port: 80
+    host_header: "www.itnsa.id"
+    state: present
+
+- name: Bind SSL certificate to www.itnsa.id
+  ansible.windows.win_shell: |
+    Import-Module WebAdministration
+    $cert = Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.Subject -like "*www.itnsa.id*" } | Select-Object -First 1
+    if ($cert) {
+        $binding = Get-WebBinding -Name "www.itnsa.id" -Protocol https
+        if ($binding) {
+            $binding.AddSslCertificate($cert.Thumbprint, "My")
+            Write-Output "SSL certificate bound to www.itnsa.id"
+        }
+    }
+  ignore_errors: yes
+
+# --- Create private.itnsa.id Website ---
+- name: Create private.itnsa.id website
+  ansible.windows.win_iis_website:
+    name: "private.itnsa.id"
+    physical_path: 'R:\inetpub\private'
+    port: 443
+    ssl: yes
+    state: started
+    hostname: "private.itnsa.id"
+
+- name: Add HTTP binding for private.itnsa.id
+  ansible.windows.win_iis_webbinding:
+    name: "private.itnsa.id"
+    protocol: http
+    port: 80
+    host_header: "private.itnsa.id"
+    state: present
+
+- name: Bind SSL certificate to private.itnsa.id
+  ansible.windows.win_shell: |
+    Import-Module WebAdministration
+    $cert = Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.Subject -like "*private.itnsa.id*" } | Select-Object -First 1
+    if ($cert) {
+        $binding = Get-WebBinding -Name "private.itnsa.id" -Protocol https
+        if ($binding) {
+            $binding.AddSslCertificate($cert.Thumbprint, "My")
+            Write-Output "SSL certificate bound to private.itnsa.id"
+        }
+    }
+  ignore_errors: yes
+
+# --- Restrict private.itnsa.id Access ---
+- name: Enable Windows Authentication on private.itnsa.id
+  ansible.windows.win_shell: |
+    Import-Module WebAdministration
+    # Disable Anonymous Authentication
+    Set-WebConfigurationProperty -Filter "/system.webServer/security/authentication/anonymousAuthentication" `
+        -Name "enabled" -Value $false -PSPath "IIS:\" -Location "private.itnsa.id"
+    # Enable Windows Authentication
+    Set-WebConfigurationProperty -Filter "/system.webServer/security/authentication/windowsAuthentication" `
+        -Name "enabled" -Value $true -PSPath "IIS:\" -Location "private.itnsa.id"
+
+- name: Configure URL Authorization for private.itnsa.id (Direksi and Manager only)
+  ansible.windows.win_shell: |
+    Import-Module WebAdministration
+    $configPath = "IIS:\Sites\private.itnsa.id"
+
+    # Clear existing authorization rules
+    Clear-WebConfiguration -Filter "/system.webServer/security/authorization" -PSPath $configPath -ErrorAction SilentlyContinue
+
+    # Remove default allow all rule
+    Remove-WebConfigurationProperty -Filter "/system.webServer/security/authorization" `
+        -PSPath $configPath -Name "." -AtElement @{users="*"; roles=""; verbs=""} -ErrorAction SilentlyContinue
+
+    # Add deny all rule first
+    Add-WebConfiguration -Filter "/system.webServer/security/authorization" `
+        -PSPath $configPath -Value @{accessType="Deny"; users="*"}
+
+    # Allow Direksi group
+    Add-WebConfiguration -Filter "/system.webServer/security/authorization" `
+        -PSPath $configPath -Value @{accessType="Allow"; roles="ITNSA\Direksi"}
+
+    # Allow Manager group
+    Add-WebConfiguration -Filter "/system.webServer/security/authorization" `
+        -PSPath $configPath -Value @{accessType="Allow"; roles="ITNSA\Manager"}
+
+    Write-Output "URL Authorization configured for private.itnsa.id"

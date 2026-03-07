@@ -1,0 +1,89 @@
+---
+# ==============================================================
+# Role: dhcp_service
+# Configure DHCP Server on fw.itnsa.id
+# ==============================================================
+
+- name: Install DHCP Server feature
+  ansible.windows.win_feature:
+    name: DHCP
+    state: present
+    include_management_tools: yes
+  register: dhcp_feature
+
+- name: Reboot after DHCP installation if needed
+  ansible.windows.win_reboot:
+    reboot_timeout: 600
+  when: dhcp_feature.reboot_required | default(false)
+
+- name: Authorize DHCP server in Active Directory
+  ansible.windows.win_shell: |
+    $authServers = Get-DhcpServerInDC -ErrorAction SilentlyContinue
+    $fwIP = "172.16.0.254"
+    if (-not ($authServers | Where-Object { $_.IPAddress -eq $fwIP })) {
+        Add-DhcpServerInDC -DnsName "fw.{{ domain_name }}" -IPAddress $fwIP
+        Write-Output "DHCP server authorized"
+    } else {
+        Write-Output "DHCP server already authorized"
+    }
+
+- name: Create DHCP scope "Internal"
+  ansible.windows.win_shell: |
+    $scope = Get-DhcpServerv4Scope -ScopeId "172.16.0.0" -ErrorAction SilentlyContinue
+    if (-not $scope) {
+        Add-DhcpServerv4Scope `
+            -Name "Internal" `
+            -StartRange 172.16.0.100 `
+            -EndRange 172.16.0.250 `
+            -SubnetMask 255.255.255.0 `
+            -LeaseDuration (New-TimeSpan -Days 1 -Hours 1 -Minutes 1) `
+            -State Active
+        Write-Output "DHCP scope created"
+    } else {
+        Write-Output "DHCP scope already exists"
+    }
+
+- name: Add exclusion range 172.16.0.200-210
+  ansible.windows.win_shell: |
+    $exclusion = Get-DhcpServerv4ExclusionRange -ScopeId "172.16.0.0" -ErrorAction SilentlyContinue
+    if (-not ($exclusion | Where-Object { $_.StartRange -eq "172.16.0.200" })) {
+        Add-DhcpServerv4ExclusionRange -ScopeId "172.16.0.0" `
+            -StartRange 172.16.0.200 `
+            -EndRange 172.16.0.210
+        Write-Output "Exclusion range added"
+    } else {
+        Write-Output "Exclusion range already exists"
+    }
+
+- name: Set DHCP option - Default Gateway (003)
+  ansible.windows.win_shell: |
+    Set-DhcpServerv4OptionValue -ScopeId "172.16.0.0" -OptionId 3 -Value "{{ gateway }}"
+
+- name: Set DHCP option - DNS Server (006)
+  ansible.windows.win_shell: |
+    Set-DhcpServerv4OptionValue -ScopeId "172.16.0.0" -OptionId 6 -Value "{{ dns_server }}"
+
+- name: Set DHCP option - Domain Name (015)
+  ansible.windows.win_shell: |
+    Set-DhcpServerv4OptionValue -ScopeId "172.16.0.0" -OptionId 15 -Value "{{ domain_name }}"
+
+- name: Configure DHCP DNS dynamic update
+  ansible.windows.win_shell: |
+    # Enable dynamic DNS updates for DHCP clients
+    Set-DhcpServerv4DnsSetting -ScopeId "172.16.0.0" `
+        -DynamicUpdates Always `
+        -NameProtection $true `
+        -DeleteDnsRROnLeaseExpiry $true
+
+- name: Configure DHCP DNS credentials for dynamic update
+  ansible.windows.win_shell: |
+    # Set credentials for DNS dynamic update
+    $secPassword = ConvertTo-SecureString "{{ domain_admin_password }}" -AsPlainText -Force
+    $cred = New-Object System.Management.Automation.PSCredential("{{ domain_name }}\{{ domain_admin_user }}", $secPassword)
+    Set-DhcpServerDnsCredential -Credential $cred -ErrorAction SilentlyContinue
+  ignore_errors: yes
+
+- name: Remove DHCP post-install warning flag
+  ansible.windows.win_shell: |
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ServerManager\Roles\12" -Name "ConfigurationState" -Value 2 -ErrorAction SilentlyContinue
+  ignore_errors: yes

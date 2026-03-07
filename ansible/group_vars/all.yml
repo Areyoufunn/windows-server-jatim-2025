@@ -1,0 +1,23 @@
+# ==============================================================
+# Common Variables for All Hosts
+# ==============================================================
+
+# Domain Configuration
+domain_name: itnsa.id
+domain_netbios: ITNSA
+domain_admin_user: Administrator
+domain_admin_password: "P@ssw0rd2025"
+
+# Network Configuration
+dns_server: 172.16.0.1
+gateway: 172.16.0.254
+inet_ip: 192.1.1.100
+
+# Timezone
+timezone: "SE Asia Standard Time"
+
+# Certificate Authority
+ca_common_name: ITNSA-CA
+
+# AD User Password
+ad_user_password: "Skill39!"

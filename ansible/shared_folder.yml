@@ -1,0 +1,48 @@
+---
+# ==============================================================
+# MANDATORY PLAYBOOK #3: Create Shared Folder
+# Create shared folder on SRV with specified permissions
+# Usage: ansible-playbook shared_folder.yml \
+#   -e share_name=Test \
+#   -e path='C:/sharing/test' \
+#   -e access='"Domain Users"' \
+#   -e owner='Manager'
+# Note: 'owner' variable is optional
+# ==============================================================
+
+- name: Create shared folder on SRV
+  hosts: app_servers
+  gather_facts: no
+  tasks:
+    - name: Ensure directory "{{ path }}" exists
+      ansible.windows.win_file:
+        path: "{{ path }}"
+        state: directory
+
+    - name: Create shared folder "{{ share_name }}"
+      ansible.windows.win_share:
+        name: "{{ share_name }}"
+        path: "{{ path }}"
+        state: present
+        full: "{{ owner | default(omit) }}"
+        read: "{{ access }}"
+        description: "Shared folder {{ share_name }}"
+
+    - name: Set NTFS Read permission for "{{ access }}"
+      ansible.windows.win_acl:
+        path: "{{ path }}"
+        user: "{{ access }}"
+        rights: Read,ReadAndExecute,ListDirectory
+        type: allow
+        state: present
+        inherit: ContainerInherit, ObjectInherit
+
+    - name: Set NTFS Full permission for "{{ owner }}"
+      ansible.windows.win_acl:
+        path: "{{ path }}"
+        user: "{{ owner }}"
+        rights: FullControl
+        type: allow
+        state: present
+        inherit: ContainerInherit, ObjectInherit
+      when: owner is defined

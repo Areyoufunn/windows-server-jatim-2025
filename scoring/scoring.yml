@@ -1,0 +1,187 @@
+---
+# ==============================================================
+# LKS SCORING SYSTEM - Master Playbook
+# Automated scoring for Juri / Penilai
+#
+# Usage: ansible-playbook scoring.yml
+# Output: /tmp/lks_scoring_report.html
+# ==============================================================
+
+# ============================
+# PHASE 1: Check DC
+# ============================
+- name: "SCORING - Check DC (dc.itnsa.id)"
+  hosts: dc_servers
+  gather_facts: no
+  tasks:
+    - include_tasks: checks/check_dc.yml
+
+    - name: Collect DC scores
+      set_fact:
+        dc_results:
+          # Basic Config
+          - { id: "BC01", desc: "DC hostname = dc", points: 1, score: "{{ score_BC01 | default(0) }}", detail: "{{ detail_BC01 | default('') }}" }
+          - { id: "BC02", desc: "DC IP = 172.16.0.1/24", points: 1, score: "{{ score_BC02 | default(0) }}", detail: "{{ detail_BC02 | default('') }}" }
+          - { id: "BC08", desc: "Timezone = SE Asia Standard Time", points: 2, score: "{{ score_BC08 | default(0) }}", detail: "{{ detail_BC08 | default('') }}" }
+          # Active Directory
+          - { id: "AD01", desc: "Domain itnsa.id exists", points: 3, score: "{{ score_AD01 | default(0) }}", detail: "{{ detail_AD01 | default('') }}" }
+          - { id: "AD02", desc: "SRV joined to domain", points: 1, score: "{{ score_AD02 | default(0) }}", detail: "{{ detail_AD02 | default('') }}" }
+          - { id: "AD03", desc: "FW joined to domain", points: 1, score: "{{ score_AD03 | default(0) }}", detail: "" }
+          - { id: "AD04", desc: "Workstation joined to domain", points: 1, score: "{{ score_AD04 | default(0) }}", detail: "" }
+          - { id: "AD05", desc: "OU Direksi exists", points: 1, score: "{{ score_AD05 | default(0) }}", detail: "{{ detail_AD05 | default('') }}" }
+          - { id: "AD06", desc: "OU Manager exists", points: 1, score: "{{ score_AD06 | default(0) }}", detail: "{{ detail_AD06 | default('') }}" }
+          - { id: "AD07", desc: "OU Karyawan exists", points: 1, score: "{{ score_AD07 | default(0) }}", detail: "{{ detail_AD07 | default('') }}" }
+          - { id: "AD08", desc: "Group Direksi in OU", points: 1, score: "{{ score_AD08 | default(0) }}", detail: "{{ detail_AD08 | default('') }}" }
+          - { id: "AD09", desc: "Group Manager in OU", points: 1, score: "{{ score_AD09 | default(0) }}", detail: "{{ detail_AD09 | default('') }}" }
+          - { id: "AD10", desc: "Group Karyawan in OU", points: 1, score: "{{ score_AD10 | default(0) }}", detail: "{{ detail_AD10 | default('') }}" }
+          - { id: "AD11", desc: "Users drs1-drs3 (correct OU/group)", points: 1, score: "{{ score_AD11 | default(0) }}", detail: "{{ detail_AD11 | default('') }}" }
+          - { id: "AD12", desc: "Users mng1-mng10 (correct OU/group)", points: 2, score: "{{ score_AD12 | default(0) }}", detail: "" }
+          - { id: "AD13", desc: "Users kyw1-kyw100 (correct OU/group)", points: 2, score: "{{ score_AD13 | default(0) }}", detail: "" }
+          - { id: "AD14", desc: "Home drive H: mapped", points: 2, score: "{{ score_AD14 | default(0) }}", detail: "{{ detail_AD14 | default('') }}" }
+          - { id: "AD15", desc: "MAIN GPO (disable welcome)", points: 1, score: "{{ score_AD15 | default(0) }}", detail: "{{ detail_AD15 | default('') }}" }
+          # DNS
+          - { id: "DNS01", desc: "A: dc.itnsa.id -> 172.16.0.1", points: 1, score: "{{ score_DNS01 | default(0) }}", detail: "" }
+          - { id: "DNS02", desc: "A: srv.itnsa.id -> 172.16.0.10", points: 1, score: "{{ score_DNS02 | default(0) }}", detail: "" }
+          - { id: "DNS03", desc: "A: fw.itnsa.id -> 172.16.0.254", points: 1, score: "{{ score_DNS03 | default(0) }}", detail: "" }
+          - { id: "DNS04", desc: "CNAME: www -> srv.itnsa.id", points: 1, score: "{{ score_DNS04 | default(0) }}", detail: "" }
+          - { id: "DNS05", desc: "CNAME: private -> srv.itnsa.id", points: 1, score: "{{ score_DNS05 | default(0) }}", detail: "" }
+          - { id: "DNS06", desc: "CNAME: filesrv -> srv.itnsa.id", points: 1, score: "{{ score_DNS06 | default(0) }}", detail: "" }
+          - { id: "DNS07", desc: "PTR: 172.16.0.1 -> dc", points: 1, score: "{{ score_DNS07 | default(0) }}", detail: "" }
+          - { id: "DNS08", desc: "PTR: 172.16.0.10 -> srv", points: 1, score: "{{ score_DNS08 | default(0) }}", detail: "" }
+          - { id: "DNS09", desc: "PTR: 172.16.0.254 -> fw", points: 1, score: "{{ score_DNS09 | default(0) }}", detail: "" }
+          - { id: "DNS10", desc: "Root hints = INET only", points: 2, score: "{{ score_DNS10 | default(0) }}", detail: "{{ detail_DNS10 | default('') }}" }
+          - { id: "DNS11", desc: "Forwarder = INET only", points: 2, score: "{{ score_DNS11 | default(0) }}", detail: "" }
+          - { id: "DNS12", desc: "NS record itnsa.id -> dc", points: 1, score: "{{ score_DNS12 | default(0) }}", detail: "" }
+          # CA
+          - { id: "CA01", desc: "AD CS installed", points: 1, score: "{{ score_CA01 | default(0) }}", detail: "{{ detail_CA | default('') }}" }
+          - { id: "CA02", desc: "Root CA CN=ITNSA-CA", points: 3, score: "{{ score_CA02 | default(0) }}", detail: "" }
+          - { id: "CA03", desc: "CA cert distributed", points: 2, score: "{{ score_CA03 | default(0) }}", detail: "" }
+
+# ============================
+# PHASE 2: Check SRV
+# ============================
+- name: "SCORING - Check SRV (srv.itnsa.id)"
+  hosts: app_servers
+  gather_facts: no
+  tasks:
+    - include_tasks: checks/check_srv.yml
+
+    - name: Collect SRV scores
+      set_fact:
+        srv_results:
+          - { id: "BC03", desc: "SRV hostname = srv", points: 1, score: "{{ score_BC03 | default(0) }}", detail: "" }
+          - { id: "BC04", desc: "SRV IP = 172.16.0.10/24", points: 1, score: "{{ score_BC04 | default(0) }}", detail: "" }
+          - { id: "RAID01", desc: "3 extra disks present", points: 1, score: "{{ score_RAID01 | default(0) }}", detail: "{{ detail_RAID | default('') }}" }
+          - { id: "RAID02", desc: "RAID/Storage Pool configured", points: 2, score: "{{ score_RAID02 | default(0) }}", detail: "" }
+          - { id: "RAID03", desc: "NTFS formatted", points: 1, score: "{{ score_RAID03 | default(0) }}", detail: "" }
+          - { id: "RAID04", desc: "Mounted as R: drive", points: 1, score: "{{ score_RAID04 | default(0) }}", detail: "" }
+          - { id: "FS01", desc: "Share Direksi exists", points: 1, score: "{{ score_FS01 | default(0) }}", detail: "{{ detail_FS_shares | default('') }}" }
+          - { id: "FS02", desc: "Share Manager exists", points: 1, score: "{{ score_FS02 | default(0) }}", detail: "" }
+          - { id: "FS03", desc: "Share Karyawan exists", points: 1, score: "{{ score_FS03 | default(0) }}", detail: "" }
+          - { id: "FS04", desc: "Share Home exists", points: 1, score: "{{ score_FS04 | default(0) }}", detail: "" }
+          - { id: "FS05", desc: "Direksi permission correct", points: 1, score: "{{ score_FS05 | default(0) }}", detail: "" }
+          - { id: "FS06", desc: "Manager permission correct", points: 1, score: "{{ score_FS06 | default(0) }}", detail: "" }
+          - { id: "FS07", desc: "Karyawan permission correct", points: 1, score: "{{ score_FS07 | default(0) }}", detail: "" }
+          - { id: "FS08", desc: "Home permission correct", points: 1, score: "{{ score_FS08 | default(0) }}", detail: "" }
+          - { id: "FS09", desc: "100MB quota on group shares", points: 2, score: "{{ score_FS09 | default(0) }}", detail: "{{ detail_FS_quotas | default('') }}" }
+          - { id: "FS10", desc: "50MB quota on Home", points: 1, score: "{{ score_FS10 | default(0) }}", detail: "" }
+          - { id: "FS11", desc: "File screen blocks .bat/.ps1", points: 2, score: "{{ score_FS11 | default(0) }}", detail: "{{ detail_FS_screen | default('') }}" }
+          - { id: "IIS01", desc: "IIS installed", points: 1, score: "{{ score_IIS01 | default(0) }}", detail: "" }
+          - { id: "IIS02", desc: "www.itnsa.id exists", points: 1, score: "{{ score_IIS02 | default(0) }}", detail: "{{ detail_IIS | default('') }}" }
+          - { id: "IIS03", desc: "www content correct", points: 1, score: "{{ score_IIS03 | default(0) }}", detail: "" }
+          - { id: "IIS04", desc: "www has SSL (ITNSA-CA)", points: 2, score: "{{ score_IIS04 | default(0) }}", detail: "" }
+          - { id: "IIS05", desc: "private.itnsa.id exists", points: 1, score: "{{ score_IIS05 | default(0) }}", detail: "" }
+          - { id: "IIS06", desc: "private content correct", points: 1, score: "{{ score_IIS06 | default(0) }}", detail: "" }
+          - { id: "IIS07", desc: "private has SSL (ITNSA-CA)", points: 2, score: "{{ score_IIS07 | default(0) }}", detail: "" }
+          - { id: "IIS08", desc: "private restricted Direksi+Manager", points: 1, score: "{{ score_IIS08 | default(0) }}", detail: "" }
+
+# ============================
+# PHASE 3: Check FW
+# ============================
+- name: "SCORING - Check FW (fw.itnsa.id)"
+  hosts: firewall_servers
+  gather_facts: no
+  tasks:
+    - include_tasks: checks/check_fw.yml
+
+    - name: Collect FW scores
+      set_fact:
+        fw_results:
+          - { id: "BC05", desc: "FW hostname = fw", points: 1, score: "{{ score_BC05 | default(0) }}", detail: "" }
+          - { id: "BC06", desc: "FW Internal IP = 172.16.0.254", points: 0.5, score: "{{ score_BC06 | default(0) }}", detail: "" }
+          - { id: "BC07", desc: "FW External IP = 192.1.1.1", points: 0.5, score: "{{ score_BC07 | default(0) }}", detail: "" }
+          - { id: "DHCP01", desc: "DHCP installed on FW", points: 1, score: "{{ score_DHCP01 | default(0) }}", detail: "" }
+          - { id: "DHCP02", desc: "Scope name = Internal", points: 1, score: "{{ score_DHCP02 | default(0) }}", detail: "{{ detail_DHCP | default('') }}" }
+          - { id: "DHCP03", desc: "Range 172.16.0.100-250", points: 1, score: "{{ score_DHCP03 | default(0) }}", detail: "" }
+          - { id: "DHCP04", desc: "Exclusion 200-210", points: 1, score: "{{ score_DHCP04 | default(0) }}", detail: "" }
+          - { id: "DHCP05", desc: "Gateway = 172.16.0.254", points: 1, score: "{{ score_DHCP05 | default(0) }}", detail: "" }
+          - { id: "DHCP06", desc: "DNS = 172.16.0.1", points: 1, score: "{{ score_DHCP06 | default(0) }}", detail: "" }
+          - { id: "DHCP07", desc: "Domain = itnsa.id", points: 1, score: "{{ score_DHCP07 | default(0) }}", detail: "" }
+          - { id: "DHCP08", desc: "Lease = 1d 1h 1m", points: 1, score: "{{ score_DHCP08 | default(0) }}", detail: "" }
+          - { id: "DHCP09", desc: "Dynamic DNS update", points: 2, score: "{{ score_DHCP09 | default(0) }}", detail: "" }
+          - { id: "RT01", desc: "RRAS installed", points: 1, score: "{{ score_RT01 | default(0) }}", detail: "" }
+          - { id: "RT02", desc: "IP forwarding enabled", points: 2, score: "{{ score_RT02 | default(0) }}", detail: "{{ detail_RT02 | default('') }}" }
+          - { id: "RT03", desc: "NAT configured", points: 2, score: "{{ score_RT03 | default(0) }}", detail: "{{ detail_RT03 | default('') }}" }
+
+# ============================
+# PHASE 4: Check Workstation
+# ============================
+- name: "SCORING - Check Workstation"
+  hosts: workstations
+  gather_facts: no
+  tasks:
+    - include_tasks: checks/check_workstation.yml
+
+    - name: Collect Workstation scores
+      set_fact:
+        ws_results:
+          - { id: "RT04", desc: "Workstation access www.public.net", points: 1, score: "{{ score_RT04 | default(0) }}", detail: "{{ detail_RT04 | default('') }}" }
+
+# ============================
+# PHASE 5: Check Ansible Playbooks (local)
+# ============================
+- name: "SCORING - Check Ansible Playbooks (ansible-srv)"
+  hosts: localhost
+  gather_facts: no
+  connection: local
+  tasks:
+    - include_tasks: checks/check_ansible.yml
+
+    - name: Collect Ansible scores
+      set_fact:
+        ansible_results:
+          - { id: "ANS01", desc: "install_features.yml exists", points: 1, score: "{{ score_ANS01 | default(0) }}", detail: "" }
+          - { id: "ANS02", desc: "install_features.yml runs", points: 2, score: "{{ score_ANS02 | default(0) }}", detail: "{{ detail_ANS02 | default('') }}" }
+          - { id: "ANS03", desc: "dns_record.yml exists", points: 1, score: "{{ score_ANS03 | default(0) }}", detail: "" }
+          - { id: "ANS04", desc: "dns_record.yml runs", points: 1, score: "{{ score_ANS04 | default(0) }}", detail: "{{ detail_ANS04 | default('') }}" }
+          - { id: "ANS05", desc: "shared_folder.yml exists", points: 1, score: "{{ score_ANS05 | default(0) }}", detail: "" }
+          - { id: "ANS06", desc: "shared_folder.yml runs", points: 2, score: "{{ score_ANS06 | default(0) }}", detail: "{{ detail_ANS06 | default('') }}" }
+
+# ============================
+# PHASE 6: Generate Report
+# ============================
+- name: "SCORING - Generate HTML Report"
+  hosts: localhost
+  gather_facts: yes
+  connection: local
+  tasks:
+    - name: Generate HTML scoring report
+      template:
+        src: templates/report.html.j2
+        dest: /tmp/lks_scoring_report.html
+      vars:
+        dc_scores: "{{ hostvars['dc']['dc_results'] | default([]) }}"
+        srv_scores: "{{ hostvars['srv']['srv_results'] | default([]) }}"
+        fw_scores: "{{ hostvars['fw']['fw_results'] | default([]) }}"
+        ws_scores: "{{ hostvars['workstation']['ws_results'] | default([]) }}"
+        ansible_scores: "{{ ansible_results | default([]) }}"
+        timestamp: "{{ ansible_date_time.iso8601 }}"
+
+    - name: Display report location
+      debug:
+        msg: |
+          ==========================================
+          SCORING REPORT GENERATED!
+          File: /tmp/lks_scoring_report.html
+          Open in browser to view results.
+          ==========================================

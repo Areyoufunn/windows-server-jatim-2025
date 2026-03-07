@@ -1,0 +1,21 @@
+---
+# ==============================================================
+# MANDATORY PLAYBOOK #1: Install Features
+# Install NFS-Client and TFTP-Client on all Windows hosts
+# Usage: ansible-playbook install_features.yml
+# ==============================================================
+
+- name: Install NFS-Client and TFTP-Client features
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Install NFS-Client feature
+      ansible.windows.win_feature:
+        name: NFS-Client
+        state: present
+        include_management_tools: yes
+
+    - name: Install TFTP-Client feature
+      ansible.windows.win_feature:
+        name: TFTP-Client
+        state: present

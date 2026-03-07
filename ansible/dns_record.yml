@@ -1,0 +1,26 @@
+---
+# ==============================================================
+# MANDATORY PLAYBOOK #2: Create DNS A Record
+# Create a DNS A record on itnsa.id domain zone
+# Usage: ansible-playbook dns_record.yml -e record=test -e value=172.16.0.1
+# ==============================================================
+
+- name: Create DNS A record on itnsa.id
+  hosts: dc_servers
+  gather_facts: no
+  tasks:
+    - name: Create A record "{{ record }}.itnsa.id" pointing to "{{ value }}"
+      ansible.windows.win_shell: |
+        # Check if the record already exists
+        $existing = Get-DnsServerResourceRecord -ZoneName "itnsa.id" -Name "{{ record }}" -RRType A -ErrorAction SilentlyContinue
+        if ($existing) {
+            # Remove existing record first
+            Remove-DnsServerResourceRecord -ZoneName "itnsa.id" -Name "{{ record }}" -RRType A -Force
+        }
+        # Create the A record
+        Add-DnsServerResourceRecordA -ZoneName "itnsa.id" -Name "{{ record }}" -IPv4Address "{{ value }}"
+      register: dns_result
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: "DNS A record {{ record }}.itnsa.id -> {{ value }} created successfully"

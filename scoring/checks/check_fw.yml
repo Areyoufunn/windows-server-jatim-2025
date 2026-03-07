@@ -1,0 +1,135 @@
+---
+# ==============================================================
+# SCORING: Check FW (fw.itnsa.id)
+# Basic Config, DHCP, Routing & NAT
+# ==============================================================
+
+# ===== BASIC CONFIG =====
+- name: "BC05 - Check FW hostname"
+  ansible.windows.win_shell: "(hostname).ToLower()"
+  register: fw_hostname
+  ignore_errors: yes
+
+- name: "BC05 - Score"
+  set_fact:
+    score_BC05: "{{ 1 if (fw_hostname.stdout | default('') | trim | lower) == 'fw' else 0 }}"
+
+- name: "BC06 - Check FW Internal IP"
+  ansible.windows.win_shell: |
+    (Get-NetIPAddress -InterfaceAlias "Ethernet0","Ethernet 0" -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress
+  register: fw_int_ip
+  ignore_errors: yes
+
+- name: "BC06 - Score"
+  set_fact:
+    score_BC06: "{{ 0.5 if (fw_int_ip.stdout | default('') | trim) == '172.16.0.254' else 0 }}"
+
+- name: "BC07 - Check FW External IP"
+  ansible.windows.win_shell: |
+    (Get-NetIPAddress -InterfaceAlias "Ethernet1","Ethernet 1" -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress
+  register: fw_ext_ip
+  ignore_errors: yes
+
+- name: "BC07 - Score"
+  set_fact:
+    score_BC07: "{{ 0.5 if (fw_ext_ip.stdout | default('') | trim) == '192.1.1.1' else 0 }}"
+
+# ===== DHCP =====
+- name: "DHCP01 - Check DHCP installed"
+  ansible.windows.win_shell: "(Get-WindowsFeature DHCP).Installed"
+  register: dhcp_installed
+  ignore_errors: yes
+
+- name: "DHCP01 - Score"
+  set_fact:
+    score_DHCP01: "{{ 1 if (dhcp_installed.stdout | default('') | trim) == 'True' else 0 }}"
+
+- name: "DHCP02-08 - Check DHCP scope config"
+  ansible.windows.win_shell: |
+    $results = @()
+    $scope = Get-DhcpServerv4Scope -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($scope) {
+        $results += "name=$($scope.Name)"
+        $results += "start=$($scope.StartRange)"
+        $results += "end=$($scope.EndRange)"
+        $results += "lease=$($scope.LeaseDuration.Days)d$($scope.LeaseDuration.Hours)h$($scope.LeaseDuration.Minutes)m"
+        # Exclusion
+        $excl = Get-DhcpServerv4ExclusionRange -ScopeId $scope.ScopeId -ErrorAction SilentlyContinue
+        if ($excl) {
+            $results += "excl_start=$($excl.StartRange)"
+            $results += "excl_end=$($excl.EndRange)"
+        } else { $results += "excl=NONE" }
+        # Options
+        $opts = Get-DhcpServerv4OptionValue -ScopeId $scope.ScopeId -ErrorAction SilentlyContinue
+        $gw = ($opts | Where-Object { $_.OptionId -eq 3 }).Value
+        $dns = ($opts | Where-Object { $_.OptionId -eq 6 }).Value
+        $dom = ($opts | Where-Object { $_.OptionId -eq 15 }).Value
+        $results += "gw=$gw"
+        $results += "dns=$dns"
+        $results += "domain=$dom"
+    } else { $results += "scope=NONE" }
+    $results -join ','
+  register: dhcp_config
+  ignore_errors: yes
+
+- name: "DHCP02-08 - Score"
+  set_fact:
+    score_DHCP02: "{{ 1 if 'name=Internal' in (dhcp_config.stdout | default('')) else 0 }}"
+    score_DHCP03: "{{ 1 if 'start=172.16.0.100' in (dhcp_config.stdout | default('')) and 'end=172.16.0.250' in (dhcp_config.stdout | default('')) else 0 }}"
+    score_DHCP04: "{{ 1 if 'excl_start=172.16.0.200' in (dhcp_config.stdout | default('')) and 'excl_end=172.16.0.210' in (dhcp_config.stdout | default('')) else 0 }}"
+    score_DHCP05: "{{ 1 if 'gw=172.16.0.254' in (dhcp_config.stdout | default('')) else 0 }}"
+    score_DHCP06: "{{ 1 if 'dns=172.16.0.1' in (dhcp_config.stdout | default('')) else 0 }}"
+    score_DHCP07: "{{ 1 if 'domain=itnsa.id' in (dhcp_config.stdout | default('')) else 0 }}"
+    score_DHCP08: "{{ 1 if '1d1h1m' in (dhcp_config.stdout | default('')) else 0 }}"
+    detail_DHCP: "{{ dhcp_config.stdout | default('N/A') | trim }}"
+
+- name: "DHCP09 - Check dynamic DNS update"
+  ansible.windows.win_shell: |
+    $scope = Get-DhcpServerv4Scope -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($scope) {
+        $dns = Get-DhcpServerv4DnsSetting -ScopeId $scope.ScopeId -ErrorAction SilentlyContinue
+        Write-Output "dynupdate=$($dns.DynamicUpdates)"
+    } else { Write-Output "NO_SCOPE" }
+  register: dhcp_dns
+  ignore_errors: yes
+
+- name: "DHCP09 - Score"
+  set_fact:
+    score_DHCP09: "{{ 2 if 'dynupdate=Always' in (dhcp_dns.stdout | default('')) or 'dynupdate=OnClientRequest' in (dhcp_dns.stdout | default('')) else 0 }}"
+
+# ===== ROUTING & NAT =====
+- name: "RT01 - Check RRAS installed"
+  ansible.windows.win_shell: "(Get-WindowsFeature Routing).Installed"
+  register: rras_installed
+  ignore_errors: yes
+
+- name: "RT01 - Score"
+  set_fact:
+    score_RT01: "{{ 1 if (rras_installed.stdout | default('') | trim) == 'True' else 0 }}"
+
+- name: "RT02 - Check IP forwarding"
+  ansible.windows.win_shell: |
+    $fwd = Get-NetIPInterface | Where-Object { $_.Forwarding -eq 'Enabled' -and $_.InterfaceAlias -notlike 'Loopback*' }
+    $regFwd = (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters -Name IPEnableRouter -ErrorAction SilentlyContinue).IPEnableRouter
+    Write-Output "interfaces=$($fwd.Count),registry=$regFwd"
+  register: ip_fwd
+  ignore_errors: yes
+
+- name: "RT02 - Score"
+  set_fact:
+    score_RT02: "{{ 2 if 'registry=1' in (ip_fwd.stdout | default('')) or (ip_fwd.stdout | default('') | regex_search('interfaces=(\\d+)', '\\1') | first | int) > 0 else 0 }}"
+    detail_RT02: "{{ ip_fwd.stdout | default('N/A') | trim }}"
+
+- name: "RT03 - Check NAT"
+  ansible.windows.win_shell: |
+    $nat = netsh routing ip nat show interface 2>$null
+    $hasNat = ($nat -match 'Full' -or $nat -match 'NAT')
+    $svc = (Get-Service RemoteAccess -ErrorAction SilentlyContinue).Status
+    Write-Output "nat=$hasNat,rras_svc=$svc"
+  register: nat_check
+  ignore_errors: yes
+
+- name: "RT03 - Score"
+  set_fact:
+    score_RT03: "{{ 2 if 'nat=True' in (nat_check.stdout | default('')) else 0 }}"
+    detail_RT03: "{{ nat_check.stdout | default('N/A') | trim }}"

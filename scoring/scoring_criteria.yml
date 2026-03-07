@@ -1,0 +1,296 @@
+---
+# ==============================================================
+# LKS SCORING SYSTEM - Criteria & Points Definition
+# Total: 100 points
+# ==============================================================
+
+scoring:
+  basic_config:
+    name: "Basic Configuration"
+    max_points: 8
+    items:
+      - id: BC01
+        desc: "DC hostname = dc"
+        points: 1
+      - id: BC02
+        desc: "DC IP = 172.16.0.1/24"
+        points: 1
+      - id: BC03
+        desc: "SRV hostname = srv"
+        points: 1
+      - id: BC04
+        desc: "SRV IP = 172.16.0.10/24"
+        points: 1
+      - id: BC05
+        desc: "FW hostname = fw"
+        points: 1
+      - id: BC06
+        desc: "FW Internal IP = 172.16.0.254/24"
+        points: 0.5
+      - id: BC07
+        desc: "FW External IP = 192.1.1.1/24"
+        points: 0.5
+      - id: BC08
+        desc: "Timezone = SE Asia Standard Time"
+        points: 2
+
+  active_directory:
+    name: "Active Directory"
+    max_points: 20
+    items:
+      - id: AD01
+        desc: "Domain itnsa.id exists"
+        points: 3
+      - id: AD02
+        desc: "SRV joined to domain"
+        points: 1
+      - id: AD03
+        desc: "FW joined to domain"
+        points: 1
+      - id: AD04
+        desc: "Workstation joined to domain"
+        points: 1
+      - id: AD05
+        desc: "OU Direksi exists"
+        points: 1
+      - id: AD06
+        desc: "OU Manager exists"
+        points: 1
+      - id: AD07
+        desc: "OU Karyawan exists"
+        points: 1
+      - id: AD08
+        desc: "Group Direksi in OU Direksi"
+        points: 1
+      - id: AD09
+        desc: "Group Manager in OU Manager"
+        points: 1
+      - id: AD10
+        desc: "Group Karyawan in OU Karyawan"
+        points: 1
+      - id: AD11
+        desc: "Users drs1-drs3 exist in correct OU/group"
+        points: 1
+      - id: AD12
+        desc: "Users mng1-mng10 exist in correct OU/group"
+        points: 2
+      - id: AD13
+        desc: "Users kyw1-kyw100 exist in correct OU/group"
+        points: 2
+      - id: AD14
+        desc: "Home drive mapped to H: (\\\\filesrv.itnsa.id\\Home\\%u)"
+        points: 2
+      - id: AD15
+        desc: "MAIN GPO - disable welcome animation"
+        points: 1
+
+  dns_service:
+    name: "DNS Service"
+    max_points: 14
+    items:
+      - id: DNS01
+        desc: "A record dc.itnsa.id -> 172.16.0.1"
+        points: 1
+      - id: DNS02
+        desc: "A record srv.itnsa.id -> 172.16.0.10"
+        points: 1
+      - id: DNS03
+        desc: "A record fw.itnsa.id -> 172.16.0.254"
+        points: 1
+      - id: DNS04
+        desc: "CNAME www.itnsa.id -> srv.itnsa.id"
+        points: 1
+      - id: DNS05
+        desc: "CNAME private.itnsa.id -> srv.itnsa.id"
+        points: 1
+      - id: DNS06
+        desc: "CNAME filesrv.itnsa.id -> srv.itnsa.id"
+        points: 1
+      - id: DNS07
+        desc: "PTR 172.16.0.1 -> dc.itnsa.id"
+        points: 1
+      - id: DNS08
+        desc: "PTR 172.16.0.10 -> srv.itnsa.id"
+        points: 1
+      - id: DNS09
+        desc: "PTR 172.16.0.254 -> fw.itnsa.id"
+        points: 1
+      - id: DNS10
+        desc: "Root hints set to INET only (192.1.1.100)"
+        points: 2
+      - id: DNS11
+        desc: "Forwarder set to INET only (192.1.1.100)"
+        points: 2
+      - id: DNS12
+        desc: "NS record itnsa.id -> dc.itnsa.id"
+        points: 1
+
+  certificate_authority:
+    name: "Certificate Authority"
+    max_points: 6
+    items:
+      - id: CA01
+        desc: "AD CS feature installed"
+        points: 1
+      - id: CA02
+        desc: "Enterprise Root CA with CN=ITNSA-CA"
+        points: 3
+      - id: CA03
+        desc: "Root CA certificate distributed to domain hosts"
+        points: 2
+
+  dhcp_service:
+    name: "DHCP Service"
+    max_points: 10
+    items:
+      - id: DHCP01
+        desc: "DHCP feature installed on FW"
+        points: 1
+      - id: DHCP02
+        desc: "Scope name = Internal"
+        points: 1
+      - id: DHCP03
+        desc: "Range 172.16.0.100 - 172.16.0.250"
+        points: 1
+      - id: DHCP04
+        desc: "Exclusion 172.16.0.200 - 172.16.0.210"
+        points: 1
+      - id: DHCP05
+        desc: "Default gateway = 172.16.0.254"
+        points: 1
+      - id: DHCP06
+        desc: "Default DNS = 172.16.0.1"
+        points: 1
+      - id: DHCP07
+        desc: "Default domain = itnsa.id"
+        points: 1
+      - id: DHCP08
+        desc: "Lease duration = 1d 1h 1m"
+        points: 1
+      - id: DHCP09
+        desc: "Dynamic DNS update enabled"
+        points: 2
+
+  raid:
+    name: "RAID Configuration"
+    max_points: 5
+    items:
+      - id: RAID01
+        desc: "3 extra disks present"
+        points: 1
+      - id: RAID02
+        desc: "RAID/Storage Pool configured"
+        points: 2
+      - id: RAID03
+        desc: "NTFS formatted"
+        points: 1
+      - id: RAID04
+        desc: "Mounted as R: drive"
+        points: 1
+
+  file_service:
+    name: "File Service"
+    max_points: 13
+    items:
+      - id: FS01
+        desc: "Share Direksi at R:\\Shares\\Direksi"
+        points: 1
+      - id: FS02
+        desc: "Share Manager at R:\\Shares\\Manager"
+        points: 1
+      - id: FS03
+        desc: "Share Karyawan at R:\\Shares\\Karyawan"
+        points: 1
+      - id: FS04
+        desc: "Share Home at R:\\Shares\\Home"
+        points: 1
+      - id: FS05
+        desc: "Direksi share permission correct"
+        points: 1
+      - id: FS06
+        desc: "Manager share permission correct"
+        points: 1
+      - id: FS07
+        desc: "Karyawan share permission correct"
+        points: 1
+      - id: FS08
+        desc: "Home share permission correct"
+        points: 1
+      - id: FS09
+        desc: "100MB quota on group shares"
+        points: 2
+      - id: FS10
+        desc: "50MB quota on Home share"
+        points: 1
+      - id: FS11
+        desc: "File screen blocks .bat and .ps1"
+        points: 2
+
+  iis_service:
+    name: "IIS Web Service"
+    max_points: 10
+    items:
+      - id: IIS01
+        desc: "IIS feature installed"
+        points: 1
+      - id: IIS02
+        desc: "www.itnsa.id website exists"
+        points: 1
+      - id: IIS03
+        desc: "www.itnsa.id content correct"
+        points: 1
+      - id: IIS04
+        desc: "www.itnsa.id has SSL (ITNSA-CA cert)"
+        points: 2
+      - id: IIS05
+        desc: "private.itnsa.id website exists"
+        points: 1
+      - id: IIS06
+        desc: "private.itnsa.id content correct"
+        points: 1
+      - id: IIS07
+        desc: "private.itnsa.id has SSL (ITNSA-CA cert)"
+        points: 2
+      - id: IIS08
+        desc: "private.itnsa.id restricted to Direksi+Manager"
+        points: 1
+
+  routing:
+    name: "Routing & NAT"
+    max_points: 6
+    items:
+      - id: RT01
+        desc: "RRAS feature installed"
+        points: 1
+      - id: RT02
+        desc: "IP forwarding enabled"
+        points: 2
+      - id: RT03
+        desc: "NAT configured"
+        points: 2
+      - id: RT04
+        desc: "Workstation can access www.public.net"
+        points: 1
+
+  ansible:
+    name: "Ansible Playbooks"
+    max_points: 8
+    items:
+      - id: ANS01
+        desc: "install_features.yml exists"
+        points: 1
+      - id: ANS02
+        desc: "install_features.yml runs successfully"
+        points: 2
+      - id: ANS03
+        desc: "dns_record.yml exists"
+        points: 1
+      - id: ANS04
+        desc: "dns_record.yml runs successfully"
+        points: 1
+      - id: ANS05
+        desc: "shared_folder.yml exists"
+        points: 1
+      - id: ANS06
+        desc: "shared_folder.yml runs successfully"
+        points: 2

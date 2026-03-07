@@ -1,0 +1,120 @@
+---
+# ==============================================================
+# MASTER PLAYBOOK: site.yml
+# Runs all configuration in the correct order
+# Usage: ansible-playbook site.yml
+#
+# Or run specific tags:
+#   ansible-playbook site.yml --tags "basic,ad"
+#   ansible-playbook site.yml --tags "dns"
+# ==============================================================
+
+# ============================
+# PHASE 1: Basic Configuration (All Hosts)
+# ============================
+- name: "Phase 1: Basic configuration on all hosts"
+  hosts: windows
+  gather_facts: no
+  tags: [basic]
+  roles:
+    - basic_config
+
+# ============================
+# PHASE 2: Active Directory (DC Only)
+# ============================
+- name: "Phase 2: Setup Active Directory on DC"
+  hosts: dc_servers
+  gather_facts: no
+  tags: [ad, active_directory]
+  roles:
+    - active_directory
+
+# ============================
+# PHASE 3: DNS Service (DC Only)
+# ============================
+- name: "Phase 3: Configure DNS service on DC"
+  hosts: dc_servers
+  gather_facts: no
+  tags: [dns]
+  roles:
+    - dns_service
+
+# ============================
+# PHASE 4: Certificate Authority (DC Only)
+# ============================
+- name: "Phase 4: Configure Certificate Authority on DC"
+  hosts: dc_servers
+  gather_facts: no
+  tags: [ca, certificate]
+  roles:
+    - certificate_authority
+
+# ============================
+# PHASE 5: Group Policy (DC Only)
+# ============================
+- name: "Phase 5: Configure Group Policy on DC"
+  hosts: dc_servers
+  gather_facts: no
+  tags: [gpo, group_policy]
+  roles:
+    - group_policy
+
+# ============================
+# PHASE 6: Domain Join (SRV, FW, Workstation)
+# ============================
+- name: "Phase 6: Join hosts to domain"
+  hosts: app_servers:firewall_servers:workstations
+  gather_facts: no
+  tags: [domain_join, join]
+  roles:
+    - domain_join
+
+# ============================
+# PHASE 7: Routing & NAT (FW Only)
+# ============================
+- name: "Phase 7: Configure Routing & NAT on FW"
+  hosts: firewall_servers
+  gather_facts: no
+  tags: [routing, nat]
+  roles:
+    - routing_nat
+
+# ============================
+# PHASE 8: DHCP Service (FW Only)
+# ============================
+- name: "Phase 8: Configure DHCP service on FW"
+  hosts: firewall_servers
+  gather_facts: no
+  tags: [dhcp]
+  roles:
+    - dhcp_service
+
+# ============================
+# PHASE 9: RAID Configuration (SRV Only)
+# ============================
+- name: "Phase 9: Configure RAID on SRV"
+  hosts: app_servers
+  gather_facts: no
+  tags: [raid]
+  roles:
+    - raid_config
+
+# ============================
+# PHASE 10: File Service (SRV Only)
+# ============================
+- name: "Phase 10: Configure File Service on SRV"
+  hosts: app_servers
+  gather_facts: no
+  tags: [file, shares]
+  roles:
+    - file_service
+
+# ============================
+# PHASE 11: IIS Web Service (SRV Only)
+# ============================
+- name: "Phase 11: Configure IIS Web Service on SRV"
+  hosts: app_servers
+  gather_facts: no
+  tags: [iis, web]
+  roles:
+    - iis_service

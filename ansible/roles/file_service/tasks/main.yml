@@ -1,0 +1,198 @@
+---
+# ==============================================================
+# Role: file_service
+# Configure shared folders, quotas, and file screens
+# Target: srv.itnsa.id
+# ==============================================================
+
+# --- Install File Server features ---
+- name: Install File Server Resource Manager
+  ansible.windows.win_feature:
+    name:
+      - FS-FileServer
+      - FS-Resource-Manager
+    state: present
+    include_management_tools: yes
+
+# --- Create Directory Structure ---
+- name: Create shared directories
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - 'R:\Shares\Direksi'
+    - 'R:\Shares\Manager'
+    - 'R:\Shares\Karyawan'
+    - 'R:\Shares\Home'
+
+# --- Create SMB Shares ---
+- name: Create Direksi share
+  ansible.windows.win_share:
+    name: Direksi
+    path: 'R:\Shares\Direksi'
+    state: present
+    full: ITNSA\Direksi
+    description: "Direksi group shared folder"
+
+- name: Create Manager share
+  ansible.windows.win_share:
+    name: Manager
+    path: 'R:\Shares\Manager'
+    state: present
+    full: ITNSA\Manager
+    description: "Manager group shared folder"
+
+- name: Create Karyawan share
+  ansible.windows.win_share:
+    name: Karyawan
+    path: 'R:\Shares\Karyawan'
+    state: present
+    full: ITNSA\Karyawan
+    description: "Karyawan group shared folder"
+
+- name: Create Home share
+  ansible.windows.win_share:
+    name: Home
+    path: 'R:\Shares\Home'
+    state: present
+    full: ITNSA\Domain Users
+    description: "Shared folder for home drive"
+
+# --- Set NTFS Permissions ---
+- name: Set NTFS permission for Direksi folder
+  ansible.windows.win_acl:
+    path: 'R:\Shares\Direksi'
+    user: ITNSA\Direksi
+    rights: FullControl
+    type: allow
+    state: present
+    inherit: ContainerInherit, ObjectInherit
+
+- name: Remove Everyone from Direksi folder
+  ansible.windows.win_acl:
+    path: 'R:\Shares\Direksi'
+    user: Everyone
+    rights: FullControl,Modify,ReadAndExecute,Read,Write
+    type: allow
+    state: absent
+  ignore_errors: yes
+
+- name: Set NTFS permission for Manager folder
+  ansible.windows.win_acl:
+    path: 'R:\Shares\Manager'
+    user: ITNSA\Manager
+    rights: FullControl
+    type: allow
+    state: present
+    inherit: ContainerInherit, ObjectInherit
+
+- name: Remove Everyone from Manager folder
+  ansible.windows.win_acl:
+    path: 'R:\Shares\Manager'
+    user: Everyone
+    rights: FullControl,Modify,ReadAndExecute,Read,Write
+    type: allow
+    state: absent
+  ignore_errors: yes
+
+- name: Set NTFS permission for Karyawan folder
+  ansible.windows.win_acl:
+    path: 'R:\Shares\Karyawan'
+    user: ITNSA\Karyawan
+    rights: FullControl
+    type: allow
+    state: present
+    inherit: ContainerInherit, ObjectInherit
+
+- name: Remove Everyone from Karyawan folder
+  ansible.windows.win_acl:
+    path: 'R:\Shares\Karyawan'
+    user: Everyone
+    rights: FullControl,Modify,ReadAndExecute,Read,Write
+    type: allow
+    state: absent
+  ignore_errors: yes
+
+- name: Set NTFS permission for Home folder
+  ansible.windows.win_acl:
+    path: 'R:\Shares\Home'
+    user: ITNSA\Domain Users
+    rights: FullControl
+    type: allow
+    state: present
+    inherit: ContainerInherit, ObjectInherit
+
+# --- Configure Quotas ---
+- name: Create 100MB quota on Direksi share
+  ansible.windows.win_shell: |
+    $existing = Get-FsrmQuota -Path "R:\Shares\Direksi" -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        New-FsrmQuota -Path "R:\Shares\Direksi" -Size 100MB -Description "100MB quota for Direksi"
+    } else {
+        Set-FsrmQuota -Path "R:\Shares\Direksi" -Size 100MB
+    }
+
+- name: Create 100MB quota on Manager share
+  ansible.windows.win_shell: |
+    $existing = Get-FsrmQuota -Path "R:\Shares\Manager" -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        New-FsrmQuota -Path "R:\Shares\Manager" -Size 100MB -Description "100MB quota for Manager"
+    } else {
+        Set-FsrmQuota -Path "R:\Shares\Manager" -Size 100MB
+    }
+
+- name: Create 100MB quota on Karyawan share
+  ansible.windows.win_shell: |
+    $existing = Get-FsrmQuota -Path "R:\Shares\Karyawan" -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        New-FsrmQuota -Path "R:\Shares\Karyawan" -Size 100MB -Description "100MB quota for Karyawan"
+    } else {
+        Set-FsrmQuota -Path "R:\Shares\Karyawan" -Size 100MB
+    }
+
+- name: Create 50MB quota on Home share
+  ansible.windows.win_shell: |
+    $existing = Get-FsrmQuota -Path "R:\Shares\Home" -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        New-FsrmQuota -Path "R:\Shares\Home" -Size 50MB -Description "50MB quota for Home"
+    } else {
+        Set-FsrmQuota -Path "R:\Shares\Home" -Size 50MB
+    }
+
+# --- Configure File Screens (Block .bat and .ps1) ---
+- name: Create custom file group for executable files
+  ansible.windows.win_shell: |
+    $fg = Get-FsrmFileGroup -Name "Blocked Executables" -ErrorAction SilentlyContinue
+    if (-not $fg) {
+        New-FsrmFileGroup -Name "Blocked Executables" -IncludePattern @("*.bat", "*.ps1")
+    } else {
+        Set-FsrmFileGroup -Name "Blocked Executables" -IncludePattern @("*.bat", "*.ps1")
+    }
+
+- name: Apply file screen to Direksi share
+  ansible.windows.win_shell: |
+    $fs = Get-FsrmFileScreen -Path "R:\Shares\Direksi" -ErrorAction SilentlyContinue
+    if (-not $fs) {
+        New-FsrmFileScreen -Path "R:\Shares\Direksi" -IncludeGroup @("Blocked Executables") -Active
+    }
+
+- name: Apply file screen to Manager share
+  ansible.windows.win_shell: |
+    $fs = Get-FsrmFileScreen -Path "R:\Shares\Manager" -ErrorAction SilentlyContinue
+    if (-not $fs) {
+        New-FsrmFileScreen -Path "R:\Shares\Manager" -IncludeGroup @("Blocked Executables") -Active
+    }
+
+- name: Apply file screen to Karyawan share
+  ansible.windows.win_shell: |
+    $fs = Get-FsrmFileScreen -Path "R:\Shares\Karyawan" -ErrorAction SilentlyContinue
+    if (-not $fs) {
+        New-FsrmFileScreen -Path "R:\Shares\Karyawan" -IncludeGroup @("Blocked Executables") -Active
+    }
+
+- name: Apply file screen to Home share
+  ansible.windows.win_shell: |
+    $fs = Get-FsrmFileScreen -Path "R:\Shares\Home" -ErrorAction SilentlyContinue
+    if (-not $fs) {
+        New-FsrmFileScreen -Path "R:\Shares\Home" -IncludeGroup @("Blocked Executables") -Active
+    }

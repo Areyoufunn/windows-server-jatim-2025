@@ -1,0 +1,25 @@
+---
+# ==============================================================
+# SCORING: Check Workstation & Ansible
+# Internet access test, Ansible playbook checks
+# ==============================================================
+
+# ===== WORKSTATION: Internet Access via NAT =====
+- name: "RT04 - Check workstation can access www.public.net"
+  ansible.windows.win_shell: |
+    try {
+        $result = Invoke-WebRequest -Uri "http://www.public.net" -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
+        Write-Output "PASS|status=$($result.StatusCode)"
+    } catch {
+        # Try ping as fallback
+        $ping = Test-Connection -ComputerName "www.public.net" -Count 2 -ErrorAction SilentlyContinue
+        if ($ping) { Write-Output "PASS|via_ping" }
+        else { Write-Output "FAIL|$($_.Exception.Message)" }
+    }
+  register: ws_internet
+  ignore_errors: yes
+
+- name: "RT04 - Score"
+  set_fact:
+    score_RT04: "{{ 1 if 'PASS' in (ws_internet.stdout | default('')) else 0 }}"
+    detail_RT04: "Internet access: {{ ws_internet.stdout | default('N/A') | trim }}"

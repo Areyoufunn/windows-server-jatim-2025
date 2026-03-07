@@ -1,0 +1,75 @@
+---
+# ==============================================================
+# Role: certificate_authority
+# Configure Enterprise Root CA on dc.itnsa.id
+# ==============================================================
+
+- name: Install AD Certificate Services feature
+  ansible.windows.win_feature:
+    name: AD-Certificate
+    state: present
+    include_sub_features: yes
+    include_management_tools: yes
+  register: adcs_feature
+
+- name: Reboot after ADCS installation if needed
+  ansible.windows.win_reboot:
+    reboot_timeout: 600
+  when: adcs_feature.reboot_required | default(false)
+
+- name: Configure Enterprise Root CA
+  ansible.windows.win_shell: |
+    try {
+        # Check if CA is already configured
+        $ca = Get-Service CertSvc -ErrorAction SilentlyContinue
+        if ($ca -and $ca.Status -eq 'Running') {
+            Write-Output "CA is already configured and running"
+        } else {
+            # Install Enterprise Root CA
+            Install-AdcsCertificationAuthority `
+                -CAType EnterpriseRootCA `
+                -CACommonName "{{ ca_common_name }}" `
+                -KeyLength 2048 `
+                -HashAlgorithmName SHA256 `
+                -CryptoProviderName "RSA#Microsoft Software Key Storage Provider" `
+                -ValidityPeriod Years `
+                -ValidityPeriodUnits 5 `
+                -Force
+            Write-Output "Enterprise Root CA configured successfully"
+        }
+    } catch {
+        if ($_.Exception.Message -like "*already installed*" -or $_.Exception.HResult -eq -2147024713) {
+            Write-Output "CA is already configured"
+        } else {
+            throw $_
+        }
+    }
+
+- name: Distribute Root CA certificate via GPO (auto-enrollment)
+  ansible.windows.win_shell: |
+    # Export Root CA certificate
+    $caCert = Get-ChildItem -Path Cert:\LocalMachine\CA | Where-Object { $_.Subject -like "*{{ ca_common_name }}*" } | Select-Object -First 1
+    if ($caCert) {
+        # Certificate is already in the Trusted Root store via AD
+        # Configure auto-enrollment via Group Policy
+        $gpoName = "AutoEnrollment"
+        $existingGPO = Get-GPO -Name $gpoName -ErrorAction SilentlyContinue
+        if (-not $existingGPO) {
+            $gpo = New-GPO -Name $gpoName
+            # Enable auto-enrollment for computer certificates
+            Set-GPRegistryValue -Name $gpoName `
+                -Key "HKLM\SOFTWARE\Policies\Microsoft\Cryptography\AutoEnrollment" `
+                -ValueName "AEPolicy" -Type DWord -Value 7
+            Set-GPRegistryValue -Name $gpoName `
+                -Key "HKCU\SOFTWARE\Policies\Microsoft\Cryptography\AutoEnrollment" `
+                -ValueName "AEPolicy" -Type DWord -Value 7
+            # Link GPO to domain
+            New-GPLink -Name $gpoName -Target "DC=itnsa,DC=id" -LinkEnabled Yes -ErrorAction SilentlyContinue
+        }
+        Write-Output "Auto-enrollment configured"
+    }
+
+- name: Force Group Policy update for CA distribution
+  ansible.windows.win_shell: |
+    gpupdate /force
+  ignore_errors: yes

@@ -1,0 +1,87 @@
+---
+# ==============================================================
+# Role: routing_nat
+# Configure Routing and NAT on fw.itnsa.id
+# ==============================================================
+
+# --- Install RRAS Feature ---
+- name: Install Routing and Remote Access feature
+  ansible.windows.win_feature:
+    name:
+      - Routing
+      - RemoteAccess
+      - RSAT-RemoteAccess-Mgmt
+    state: present
+    include_management_tools: yes
+  register: rras_feature
+
+- name: Reboot after RRAS installation if needed
+  ansible.windows.win_reboot:
+    reboot_timeout: 600
+  when: rras_feature.reboot_required | default(false)
+
+# --- Enable IP Forwarding ---
+- name: Enable IP forwarding in registry
+  ansible.windows.win_regedit:
+    path: HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters
+    name: IPEnableRouter
+    data: 1
+    type: dword
+    state: present
+
+# --- Configure RRAS and NAT ---
+- name: Install and configure RRAS with NAT
+  ansible.windows.win_shell: |
+    # Check if RRAS is already configured
+    $rras = Get-Service RemoteAccess -ErrorAction SilentlyContinue
+    if ($rras.Status -ne "Running") {
+        # Install RemoteAccess with Routing (non-VPN)
+        Install-RemoteAccess -VpnType RoutingOnly -ErrorAction SilentlyContinue
+
+        # Start the service
+        Set-Service -Name RemoteAccess -StartupType Automatic
+        Start-Service -Name RemoteAccess -ErrorAction SilentlyContinue
+    }
+
+    Write-Output "RRAS service configured"
+
+- name: Configure NAT on external interface
+  ansible.windows.win_shell: |
+    # Import RRAS module
+    Import-Module RemoteAccess -ErrorAction SilentlyContinue
+
+    # Get external interface (Ethernet1 - 192.1.1.1)
+    $extAdapter = Get-NetAdapter | Where-Object {
+        $_.Name -like "Ethernet1" -or $_.Name -like "Ethernet 1"
+    } | Select-Object -First 1
+
+    # Get internal interface (Ethernet0 - 172.16.0.254)
+    $intAdapter = Get-NetAdapter | Where-Object {
+        $_.Name -like "Ethernet0" -or $_.Name -like "Ethernet 0"
+    } | Select-Object -First 1
+
+    if ($extAdapter -and $intAdapter) {
+        # Configure NAT using netsh
+        netsh routing ip nat install
+        netsh routing ip nat add interface name="$($extAdapter.Name)" mode=full
+        netsh routing ip nat add interface name="$($intAdapter.Name)" mode=private
+
+        Write-Output "NAT configured: Internal=$($intAdapter.Name), External=$($extAdapter.Name)"
+    } else {
+        Write-Output "WARNING: Could not find network adapters for NAT configuration"
+    }
+  ignore_errors: yes
+
+- name: Verify routing is working
+  ansible.windows.win_shell: |
+    # Check IP forwarding status
+    $forwarding = Get-NetIPInterface | Where-Object { $_.Forwarding -eq "Enabled" }
+    if ($forwarding) {
+        Write-Output "IP Forwarding is enabled on: $($forwarding.InterfaceAlias -join ', ')"
+    } else {
+        # Force enable forwarding on all interfaces
+        Get-NetAdapter | Where-Object { $_.Name -notlike "Management" } | ForEach-Object {
+            Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled -ErrorAction SilentlyContinue
+        }
+        Write-Output "IP Forwarding enabled on all interfaces"
+    }

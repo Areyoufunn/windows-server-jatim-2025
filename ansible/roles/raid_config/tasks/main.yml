@@ -1,0 +1,64 @@
+---
+# ==============================================================
+# Role: raid_config
+# Configure RAID using Storage Spaces on srv.itnsa.id
+# Assumes 3 extra 10GB disks have been added
+# ==============================================================
+
+- name: Create Storage Pool from available physical disks
+  ansible.windows.win_shell: |
+    # Get available physical disks (not used by system)
+    $subsystem = Get-StorageSubsystem | Where-Object { $_.FriendlyName -like "*Storage*" -or $_.FriendlyName -like "*Windows*" } | Select-Object -First 1
+    $availableDisks = Get-PhysicalDisk | Where-Object { $_.CanPool -eq $true }
+
+    if ($availableDisks.Count -lt 3) {
+        Write-Output "WARNING: Found only $($availableDisks.Count) available disks. Need at least 3."
+        # Try to get disks that are not initialized
+        $availableDisks = Get-PhysicalDisk | Where-Object { $_.OperationalStatus -eq 'OK' -and $_.Size -gt 9GB -and $_.Size -lt 11GB }
+    }
+
+    # Check if pool already exists
+    $existingPool = Get-StoragePool -FriendlyName "RAIDPool" -ErrorAction SilentlyContinue
+    if (-not $existingPool) {
+        New-StoragePool -FriendlyName "RAIDPool" `
+            -StorageSubsystemFriendlyName $subsystem.FriendlyName `
+            -PhysicalDisks $availableDisks
+        Write-Output "Storage Pool 'RAIDPool' created"
+    } else {
+        Write-Output "Storage Pool 'RAIDPool' already exists"
+    }
+
+- name: Create Virtual Disk (RAID-5)
+  ansible.windows.win_shell: |
+    $existingVD = Get-VirtualDisk -FriendlyName "RAIDDisk" -ErrorAction SilentlyContinue
+    if (-not $existingVD) {
+        New-VirtualDisk -StoragePoolFriendlyName "RAIDPool" `
+            -FriendlyName "RAIDDisk" `
+            -ResiliencySettingName Parity `
+            -UseMaximumSize
+        Write-Output "Virtual Disk 'RAIDDisk' created with RAID-5 (Parity)"
+    } else {
+        Write-Output "Virtual Disk 'RAIDDisk' already exists"
+    }
+
+- name: Initialize, format, and assign drive letter R
+  ansible.windows.win_shell: |
+    # Get the virtual disk
+    $vdisk = Get-VirtualDisk -FriendlyName "RAIDDisk"
+    $disk = $vdisk | Get-Disk
+
+    # Check if already has partition with R:
+    $existingPartition = Get-Partition -DiskNumber $disk.Number -ErrorAction SilentlyContinue | Where-Object { $_.DriveLetter -eq 'R' }
+    if ($existingPartition) {
+        Write-Output "Drive R: already configured"
+    } else {
+        # Initialize disk if needed
+        if ($disk.PartitionStyle -eq 'RAW') {
+            Initialize-Disk -Number $disk.Number -PartitionStyle GPT
+        }
+
+        # Create partition with NTFS and assign R:
+        $partition = New-Partition -DiskNumber $disk.Number -UseMaximumSize -DriveLetter R
+        Format-Volume -DriveLetter R -FileSystem NTFS -NewFileSystemLabel "RAID Volume" -Confirm:$false
+        Write-Output "Drive R: created and formatted with NTFS"
+    }

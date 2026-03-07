@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>LKS Scoring Report - Windows Environment</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .header { text-align: center; padding: 30px; background: linear-gradient(135deg, #1e3a5f, #2563eb); border-radius: 16px; margin-bottom: 24px; }
+        .header h1 { font-size: 28px; color: #fff; }
+        .header h2 { font-size: 16px; color: #93c5fd; margin-top: 8px; }
+        .header .timestamp { color: #94a3b8; font-size: 13px; margin-top: 12px; }
+
+        .score-summary { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+        .score-card { flex: 1; min-width: 200px; background: #1e293b; border-radius: 12px; padding: 20px; text-align: center; border: 1px solid #334155; }
+        .score-card .value { font-size: 48px; font-weight: 800; }
+        .score-card .label { color: #94a3b8; font-size: 14px; margin-top: 4px; }
+        .score-card.total .value { color: #22c55e; }
+        .score-card.percent .value { color: #3b82f6; }
+
+        .category { background: #1e293b; border-radius: 12px; margin-bottom: 16px; overflow: hidden; border: 1px solid #334155; }
+        .category-header { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+        .category-header h3 { font-size: 16px; }
+        .category-header .cat-score { font-size: 18px; font-weight: 700; }
+        .category-header .cat-score.full { color: #22c55e; }
+        .category-header .cat-score.partial { color: #eab308; }
+        .category-header .cat-score.zero { color: #ef4444; }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #0f172a; padding: 10px 16px; text-align: left; font-size: 13px; color: #94a3b8; font-weight: 600; }
+        td { padding: 10px 16px; border-top: 1px solid #334155; font-size: 14px; }
+        tr:hover { background: #334155; }
+
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+        .badge.pass { background: #166534; color: #86efac; }
+        .badge.fail { background: #7f1d1d; color: #fca5a5; }
+        .detail { color: #94a3b8; font-size: 12px; }
+
+        .progress-bar { height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-top: 16px; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+        .progress-fill.green { background: linear-gradient(90deg, #22c55e, #16a34a); }
+        .progress-fill.yellow { background: linear-gradient(90deg, #eab308, #ca8a04); }
+        .progress-fill.red { background: linear-gradient(90deg, #ef4444, #dc2626); }
+
+        .footer { text-align: center; padding: 20px; color: #64748b; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏆 LKS SCORING REPORT</h1>
+            <h2>Modul Windows Environment - IT Network Systems Administration</h2>
+            <div class="timestamp">Generated: {{ timestamp }}</div>
+        </div>
+
+        {% raw %}
+        <script>
+            // Calculate totals from embedded data
+            document.addEventListener('DOMContentLoaded', function() {
+                let totalScore = 0, totalMax = 0;
+                document.querySelectorAll('.item-score').forEach(el => {
+                    totalScore += parseFloat(el.dataset.score);
+                    totalMax += parseFloat(el.dataset.max);
+                });
+                document.getElementById('total-score').textContent = totalScore;
+                document.getElementById('total-max').textContent = totalMax;
+                const pct = totalMax > 0 ? Math.round(totalScore / totalMax * 100) : 0;
+                document.getElementById('total-pct').textContent = pct + '%';
+                const bar = document.getElementById('main-progress');
+                bar.style.width = pct + '%';
+                bar.className = 'progress-fill ' + (pct >= 80 ? 'green' : pct >= 50 ? 'yellow' : 'red');
+            });
+        </script>
+        {% endraw %}
+
+        <div class="score-summary">
+            <div class="score-card total">
+                <div class="value"><span id="total-score">-</span></div>
+                <div class="label">Score / <span id="total-max">100</span></div>
+            </div>
+            <div class="score-card percent">
+                <div class="value"><span id="total-pct">-%</span></div>
+                <div class="label">Percentage</div>
+            </div>
+        </div>
+        <div class="progress-bar"><div id="main-progress" class="progress-fill" style="width:0%"></div></div>
+        <br>
+
+        <!-- Categories -->
+        {% set all_categories = [
+            {'name': 'Basic Configuration (All Hosts)', 'prefix': 'BC', 'data': dc_scores + srv_scores + fw_scores},
+            {'name': 'Active Directory (dc.itnsa.id)', 'prefix': 'AD', 'data': dc_scores},
+            {'name': 'DNS Service (dc.itnsa.id)', 'prefix': 'DNS', 'data': dc_scores},
+            {'name': 'Certificate Authority (dc.itnsa.id)', 'prefix': 'CA', 'data': dc_scores},
+            {'name': 'DHCP Service (fw.itnsa.id)', 'prefix': 'DHCP', 'data': fw_scores},
+            {'name': 'RAID Configuration (srv.itnsa.id)', 'prefix': 'RAID', 'data': srv_scores},
+            {'name': 'File Service (srv.itnsa.id)', 'prefix': 'FS', 'data': srv_scores},
+            {'name': 'IIS Web Service (srv.itnsa.id)', 'prefix': 'IIS', 'data': srv_scores},
+            {'name': 'Routing & NAT (fw.itnsa.id)', 'prefix': 'RT', 'data': fw_scores + ws_scores},
+            {'name': 'Ansible Playbooks (ansible-srv)', 'prefix': 'ANS', 'data': ansible_scores},
+        ] %}
+
+        {% for cat in all_categories %}
+        {% set items = cat.data | selectattr('id', 'match', '^' + cat.prefix) | list %}
+        {% if items | length > 0 %}
+        {% set cat_earned = items | map(attribute='score') | map('float') | sum %}
+        {% set cat_max = items | map(attribute='points') | map('float') | sum %}
+        <div class="category">
+            <div class="category-header">
+                <h3>{{ cat.name }}</h3>
+                <span class="cat-score {{ 'full' if cat_earned == cat_max else ('partial' if cat_earned > 0 else 'zero') }}">
+                    {{ cat_earned }} / {{ cat_max }}
+                </span>
+            </div>
+            <table>
+                <tr><th>ID</th><th>Check Item</th><th>Points</th><th>Status</th><th>Detail</th></tr>
+                {% for item in items %}
+                <tr>
+                    <td>{{ item.id }}</td>
+                    <td>{{ item.desc }}</td>
+                    <td class="item-score" data-score="{{ item.score }}" data-max="{{ item.points }}">
+                        {{ item.score }} / {{ item.points }}
+                    </td>
+                    <td>
+                        {% if item.score | float >= item.points | float %}
+                        <span class="badge pass">PASS</span>
+                        {% elif item.score | float > 0 %}
+                        <span class="badge pass">PARTIAL</span>
+                        {% else %}
+                        <span class="badge fail">FAIL</span>
+                        {% endif %}
+                    </td>
+                    <td class="detail">{{ item.detail | default('') }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        {% endif %}
+        {% endfor %}
+
+        <div class="footer">
+            <p>LKS Provinsi 2025 - IT Network Systems Administration</p>
+            <p>Scoring generated by Ansible Automation</p>
+        </div>
+    </div>
+</body>
+</html>

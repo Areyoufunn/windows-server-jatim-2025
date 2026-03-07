@@ -1,0 +1,35 @@
+all:
+  children:
+    dc_servers:
+      hosts:
+        dc:
+          ansible_host: 10.0.0.1
+    app_servers:
+      hosts:
+        srv:
+          ansible_host: 10.0.0.2
+    firewall_servers:
+      hosts:
+        fw:
+          ansible_host: 10.0.0.3
+    workstations:
+      hosts:
+        workstation:
+          ansible_host: 10.0.0.4
+
+    # Group semua Windows hosts
+    windows:
+      children:
+        dc_servers:
+        app_servers:
+        firewall_servers:
+        workstations:
+
+  vars:
+    # WinRM connection via Management network
+    ansible_user: Administrator
+    ansible_password: "P@ssw0rd2025"
+    ansible_connection: winrm
+    ansible_winrm_transport: ntlm
+    ansible_winrm_server_cert_validation: ignore
+    ansible_port: 5985

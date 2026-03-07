@@ -1,0 +1,69 @@
+---
+# ==============================================================
+# SCORING: Check Ansible Playbooks (ansible-srv)
+# Verify playbooks exist and execute successfully
+# ==============================================================
+
+- name: "ANS01 - Check install_features.yml exists"
+  ansible.builtin.stat:
+    path: /etc/ansible/install_features.yml
+  register: ans_features
+
+- name: "ANS01 - Score"
+  set_fact:
+    score_ANS01: "{{ 1 if ans_features.stat.exists | default(false) else 0 }}"
+
+- name: "ANS02 - Test install_features.yml (dry-run)"
+  ansible.builtin.command:
+    cmd: ansible-playbook /etc/ansible/install_features.yml --check
+  register: ans_features_run
+  ignore_errors: yes
+
+- name: "ANS02 - Score"
+  set_fact:
+    score_ANS02: "{{ 2 if ans_features_run.rc | default(1) == 0 else 0 }}"
+    detail_ANS02: "install_features: rc={{ ans_features_run.rc | default('N/A') }}"
+
+- name: "ANS03 - Check dns_record.yml exists"
+  ansible.builtin.stat:
+    path: /etc/ansible/dns_record.yml
+  register: ans_dns
+
+- name: "ANS03 - Score"
+  set_fact:
+    score_ANS03: "{{ 1 if ans_dns.stat.exists | default(false) else 0 }}"
+
+- name: "ANS04 - Test dns_record.yml (dry-run)"
+  ansible.builtin.command:
+    cmd: ansible-playbook /etc/ansible/dns_record.yml --check -e record=test_scoring -e value=172.16.0.99
+  register: ans_dns_run
+  ignore_errors: yes
+
+- name: "ANS04 - Score"
+  set_fact:
+    score_ANS04: "{{ 1 if ans_dns_run.rc | default(1) == 0 else 0 }}"
+    detail_ANS04: "dns_record: rc={{ ans_dns_run.rc | default('N/A') }}"
+
+- name: "ANS05 - Check shared_folder.yml exists"
+  ansible.builtin.stat:
+    path: /etc/ansible/shared_folder.yml
+  register: ans_share
+
+- name: "ANS05 - Score"
+  set_fact:
+    score_ANS05: "{{ 1 if ans_share.stat.exists | default(false) else 0 }}"
+
+- name: "ANS06 - Test shared_folder.yml (dry-run)"
+  ansible.builtin.command:
+    cmd: >
+      ansible-playbook /etc/ansible/shared_folder.yml --check
+      -e share_name=TestScoring
+      -e path='C:/temp/test_scoring'
+      -e access='"Domain Users"'
+  register: ans_share_run
+  ignore_errors: yes
+
+- name: "ANS06 - Score"
+  set_fact:
+    score_ANS06: "{{ 2 if ans_share_run.rc | default(1) == 0 else 0 }}"
+    detail_ANS06: "shared_folder: rc={{ ans_share_run.rc | default('N/A') }}"

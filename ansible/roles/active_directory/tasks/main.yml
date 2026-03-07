@@ -1,0 +1,143 @@
+---
+# ==============================================================
+# Role: active_directory
+# Setup Domain Controller, OUs, Groups, and Users
+# Target: dc.itnsa.id
+# ==============================================================
+
+# --- Install AD DS Feature ---
+- name: Install AD Domain Services feature
+  ansible.windows.win_feature:
+    name: AD-Domain-Services
+    state: present
+    include_management_tools: yes
+  register: ad_feature
+
+# --- Promote to Domain Controller ---
+- name: Promote to Domain Controller (new forest)
+  ansible.windows.win_domain:
+    dns_domain_name: "{{ domain_name }}"
+    safe_mode_password: "{{ domain_admin_password }}"
+    domain_netbios_name: "{{ domain_netbios }}"
+  register: domain_result
+
+- name: Reboot after DC promotion
+  ansible.windows.win_reboot:
+    reboot_timeout: 900
+    msg: "Rebooting after DC promotion"
+  when: domain_result.reboot_required | default(false)
+
+- name: Wait for AD DS to be fully ready
+  ansible.windows.win_shell: |
+    $timeout = 300
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    while ($timer.Elapsed.TotalSeconds -lt $timeout) {
+        try {
+            Get-ADDomain -ErrorAction Stop | Out-Null
+            Write-Output "AD DS is ready"
+            break
+        } catch {
+            Start-Sleep -Seconds 10
+        }
+    }
+  retries: 3
+  delay: 30
+
+# --- Create Organizational Units ---
+- name: Create OU Direksi
+  community.windows.win_domain_ou:
+    name: Direksi
+    path: "DC=itnsa,DC=id"
+    state: present
+
+- name: Create OU Manager
+  community.windows.win_domain_ou:
+    name: Manager
+    path: "DC=itnsa,DC=id"
+    state: present
+
+- name: Create OU Karyawan
+  community.windows.win_domain_ou:
+    name: Karyawan
+    path: "DC=itnsa,DC=id"
+    state: present
+
+# --- Create AD Groups ---
+- name: Create Direksi group in Direksi OU
+  community.windows.win_domain_group:
+    name: Direksi
+    path: "OU=Direksi,DC=itnsa,DC=id"
+    scope: global
+    category: security
+    state: present
+
+- name: Create Manager group in Manager OU
+  community.windows.win_domain_group:
+    name: Manager
+    path: "OU=Manager,DC=itnsa,DC=id"
+    scope: global
+    category: security
+    state: present
+
+- name: Create Karyawan group in Karyawan OU
+  community.windows.win_domain_group:
+    name: Karyawan
+    path: "OU=Karyawan,DC=itnsa,DC=id"
+    scope: global
+    category: security
+    state: present
+
+# --- Create AD Users ---
+# Direksi users: drs1-3
+- name: Create Direksi users (drs1-drs3)
+  community.windows.win_domain_user:
+    name: "drs{{ item }}"
+    password: "{{ ad_user_password }}"
+    password_never_expires: yes
+    user_cannot_change_password: no
+    update_password: on_create
+    state: present
+    path: "OU=Direksi,DC=itnsa,DC=id"
+    groups:
+      - Direksi
+    attributes:
+      homeDirectory: "\\\\filesrv.itnsa.id\\Home\\drs{{ item }}"
+      homeDrive: "H:"
+    password_expired: no
+  loop: "{{ range(1, 4) | list }}"
+
+# Manager users: mng1-10
+- name: Create Manager users (mng1-mng10)
+  community.windows.win_domain_user:
+    name: "mng{{ item }}"
+    password: "{{ ad_user_password }}"
+    password_never_expires: yes
+    user_cannot_change_password: no
+    update_password: on_create
+    state: present
+    path: "OU=Manager,DC=itnsa,DC=id"
+    groups:
+      - Manager
+    attributes:
+      homeDirectory: "\\\\filesrv.itnsa.id\\Home\\mng{{ item }}"
+      homeDrive: "H:"
+    password_expired: no
+  loop: "{{ range(1, 11) | list }}"
+
+# Karyawan users: kyw1-100
+- name: Create Karyawan users (kyw1-kyw100)
+  community.windows.win_domain_user:
+    name: "kyw{{ item }}"
+    password: "{{ ad_user_password }}"
+    password_never_expires: yes
+    user_cannot_change_password: no
+    update_password: on_create
+    state: present
+    path: "OU=Karyawan,DC=itnsa,DC=id"
+    groups:
+      - Karyawan
+    attributes:
+      homeDirectory: "\\\\filesrv.itnsa.id\\Home\\kyw{{ item }}"
+      homeDrive: "H:"
+    password_expired: no
+  loop: "{{ range(1, 101) | list }}"

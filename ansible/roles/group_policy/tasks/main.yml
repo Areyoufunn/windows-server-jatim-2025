@@ -1,0 +1,44 @@
+---
+# ==============================================================
+# Role: group_policy
+# Create MAIN GPO to disable welcome animation on first logon
+# Target: dc.itnsa.id
+# ==============================================================
+
+- name: Create MAIN GPO to prevent welcome animation
+  ansible.windows.win_shell: |
+    Import-Module GroupPolicy
+
+    $gpoName = "MAIN GPO"
+
+    # Check if GPO already exists
+    $existingGPO = Get-GPO -Name $gpoName -ErrorAction SilentlyContinue
+
+    if (-not $existingGPO) {
+        # Create the GPO
+        $gpo = New-GPO -Name $gpoName -Comment "Prevent welcome animation from appearing on first login"
+
+        # Link GPO to domain
+        New-GPLink -Name $gpoName -Target "DC=itnsa,DC=id" -LinkEnabled Yes
+
+        Write-Output "GPO '$gpoName' created and linked to domain"
+    } else {
+        Write-Output "GPO '$gpoName' already exists"
+    }
+
+    # Set registry value to disable first logon animation
+    # This setting prevents the "Hi" / "We're setting things up" animation
+    Set-GPRegistryValue -Name $gpoName `
+        -Key "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" `
+        -ValueName "EnableFirstLogonAnimation" `
+        -Type DWord `
+        -Value 0
+
+    # Also set the newer privacy experience setting
+    Set-GPRegistryValue -Name $gpoName `
+        -Key "HKLM\SOFTWARE\Policies\Microsoft\Windows\OOBE" `
+        -ValueName "DisablePrivacyExperience" `
+        -Type DWord `
+        -Value 1
+
+    Write-Output "Welcome animation disabled via MAIN GPO"

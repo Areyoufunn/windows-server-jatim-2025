@@ -1,0 +1,91 @@
+---
+# ==============================================================
+# Role: basic_config
+# Configure hostname, IP address, DNS, Gateway, and Timezone
+# ==============================================================
+
+- name: Set timezone to SE Asia Standard Time (UTC+07:00)
+  ansible.windows.win_timezone:
+    timezone: "{{ timezone }}"
+
+- name: Set hostname for DC
+  ansible.windows.win_hostname:
+    name: dc
+  when: inventory_hostname == 'dc'
+  register: hostname_dc
+
+- name: Set hostname for SRV
+  ansible.windows.win_hostname:
+    name: srv
+  when: inventory_hostname == 'srv'
+  register: hostname_srv
+
+- name: Set hostname for FW
+  ansible.windows.win_hostname:
+    name: fw
+  when: inventory_hostname == 'fw'
+  register: hostname_fw
+
+- name: Set hostname for Workstation
+  ansible.windows.win_hostname:
+    name: workstation
+  when: inventory_hostname == 'workstation'
+  register: hostname_ws
+
+# --- DC Network Configuration ---
+- name: Configure DC IP address
+  ansible.windows.win_shell: |
+    $adapter = Get-NetAdapter | Where-Object { $_.Name -like "Ethernet0" -or $_.Name -like "Ethernet 0" -or ($_.Name -notlike "Management" -and $_.Status -eq "Up") } | Select-Object -First 1
+    if ($adapter) {
+        # Remove existing IP configuration
+        Remove-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-NetRoute -InterfaceIndex $adapter.InterfaceIndex -Confirm:$false -ErrorAction SilentlyContinue
+        # Set new IP
+        New-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -IPAddress 172.16.0.1 -PrefixLength 24 -DefaultGateway 172.16.0.254
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses @("127.0.0.1", "172.16.0.1")
+    }
+  when: inventory_hostname == 'dc'
+
+# --- SRV Network Configuration ---
+- name: Configure SRV IP address
+  ansible.windows.win_shell: |
+    $adapter = Get-NetAdapter | Where-Object { $_.Name -like "Ethernet0" -or $_.Name -like "Ethernet 0" -or ($_.Name -notlike "Management" -and $_.Status -eq "Up") } | Select-Object -First 1
+    if ($adapter) {
+        Remove-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-NetRoute -InterfaceIndex $adapter.InterfaceIndex -Confirm:$false -ErrorAction SilentlyContinue
+        New-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -IPAddress 172.16.0.10 -PrefixLength 24 -DefaultGateway 172.16.0.254
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses @("172.16.0.1")
+    }
+  when: inventory_hostname == 'srv'
+
+# --- FW Network Configuration ---
+- name: Configure FW Internal IP address (Ethernet0)
+  ansible.windows.win_shell: |
+    $adapter = Get-NetAdapter | Where-Object { $_.Name -like "Ethernet0" -or $_.Name -like "Ethernet 0" } | Select-Object -First 1
+    if ($adapter) {
+        Remove-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-NetRoute -InterfaceIndex $adapter.InterfaceIndex -Confirm:$false -ErrorAction SilentlyContinue
+        New-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -IPAddress 172.16.0.254 -PrefixLength 24
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses @("172.16.0.1")
+    }
+  when: inventory_hostname == 'fw'
+
+- name: Configure FW External IP address (Ethernet1)
+  ansible.windows.win_shell: |
+    $adapter = Get-NetAdapter | Where-Object { $_.Name -like "Ethernet1" -or $_.Name -like "Ethernet 1" } | Select-Object -First 1
+    if ($adapter) {
+        Remove-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-NetRoute -InterfaceIndex $adapter.InterfaceIndex -Confirm:$false -ErrorAction SilentlyContinue
+        New-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -IPAddress 192.1.1.1 -PrefixLength 24
+    }
+  when: inventory_hostname == 'fw'
+
+- name: Reboot if hostname changed
+  ansible.windows.win_reboot:
+    reboot_timeout: 600
+    msg: "Rebooting after hostname change"
+  when: >
+    (hostname_dc is defined and hostname_dc.changed) or
+    (hostname_srv is defined and hostname_srv.changed) or
+    (hostname_fw is defined and hostname_fw.changed) or
+    (hostname_ws is defined and hostname_ws.changed)

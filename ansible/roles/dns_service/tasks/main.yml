@@ -1,0 +1,113 @@
+---
+# ==============================================================
+# Role: dns_service
+# Configure DNS records, root hints, and forwarders
+# Target: dc.itnsa.id
+# ==============================================================
+
+# --- Create Forward Lookup Zone (should already exist after AD DS promotion) ---
+- name: Ensure itnsa.id DNS zone exists
+  ansible.windows.win_shell: |
+    $zone = Get-DnsServerZone -Name "itnsa.id" -ErrorAction SilentlyContinue
+    if (-not $zone) {
+        Add-DnsServerPrimaryZone -Name "itnsa.id" -ReplicationScope Domain
+        Write-Output "Created zone itnsa.id"
+    } else {
+        Write-Output "Zone itnsa.id already exists"
+    }
+
+# --- Create Reverse Lookup Zone ---
+- name: Create reverse lookup zone for 172.16.0.0/24
+  ansible.windows.win_shell: |
+    $zone = Get-DnsServerZone -Name "0.16.172.in-addr.arpa" -ErrorAction SilentlyContinue
+    if (-not $zone) {
+        Add-DnsServerPrimaryZone -NetworkId "172.16.0.0/24" -ReplicationScope Domain
+        Write-Output "Created reverse zone"
+    } else {
+        Write-Output "Reverse zone already exists"
+    }
+
+# --- A Records ---
+- name: Create A record for dc.itnsa.id
+  ansible.windows.win_shell: |
+    $existing = Get-DnsServerResourceRecord -ZoneName "itnsa.id" -Name "dc" -RRType A -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        Add-DnsServerResourceRecordA -ZoneName "itnsa.id" -Name "dc" -IPv4Address "172.16.0.1"
+    }
+
+- name: Create A record for srv.itnsa.id
+  ansible.windows.win_shell: |
+    $existing = Get-DnsServerResourceRecord -ZoneName "itnsa.id" -Name "srv" -RRType A -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        Add-DnsServerResourceRecordA -ZoneName "itnsa.id" -Name "srv" -IPv4Address "172.16.0.10"
+    }
+
+- name: Create A record for fw.itnsa.id
+  ansible.windows.win_shell: |
+    $existing = Get-DnsServerResourceRecord -ZoneName "itnsa.id" -Name "fw" -RRType A -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        Add-DnsServerResourceRecordA -ZoneName "itnsa.id" -Name "fw" -IPv4Address "172.16.0.254"
+    }
+
+# --- CNAME Records ---
+- name: Create CNAME record for www.itnsa.id
+  ansible.windows.win_shell: |
+    $existing = Get-DnsServerResourceRecord -ZoneName "itnsa.id" -Name "www" -RRType CNAME -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        Add-DnsServerResourceRecordCName -ZoneName "itnsa.id" -Name "www" -HostNameAlias "srv.itnsa.id"
+    }
+
+- name: Create CNAME record for private.itnsa.id
+  ansible.windows.win_shell: |
+    $existing = Get-DnsServerResourceRecord -ZoneName "itnsa.id" -Name "private" -RRType CNAME -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        Add-DnsServerResourceRecordCName -ZoneName "itnsa.id" -Name "private" -HostNameAlias "srv.itnsa.id"
+    }
+
+- name: Create CNAME record for filesrv.itnsa.id
+  ansible.windows.win_shell: |
+    $existing = Get-DnsServerResourceRecord -ZoneName "itnsa.id" -Name "filesrv" -RRType CNAME -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        Add-DnsServerResourceRecordCName -ZoneName "itnsa.id" -Name "filesrv" -HostNameAlias "srv.itnsa.id"
+    }
+
+# --- PTR Records ---
+- name: Create PTR record for 172.16.0.1 -> dc.itnsa.id
+  ansible.windows.win_shell: |
+    $existing = Get-DnsServerResourceRecord -ZoneName "0.16.172.in-addr.arpa" -Name "1" -RRType PTR -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        Add-DnsServerResourceRecordPtr -ZoneName "0.16.172.in-addr.arpa" -Name "1" -PtrDomainName "dc.itnsa.id"
+    }
+
+- name: Create PTR record for 172.16.0.10 -> srv.itnsa.id
+  ansible.windows.win_shell: |
+    $existing = Get-DnsServerResourceRecord -ZoneName "0.16.172.in-addr.arpa" -Name "10" -RRType PTR -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        Add-DnsServerResourceRecordPtr -ZoneName "0.16.172.in-addr.arpa" -Name "10" -PtrDomainName "srv.itnsa.id"
+    }
+
+- name: Create PTR record for 172.16.0.254 -> fw.itnsa.id
+  ansible.windows.win_shell: |
+    $existing = Get-DnsServerResourceRecord -ZoneName "0.16.172.in-addr.arpa" -Name "254" -RRType PTR -ErrorAction SilentlyContinue
+    if (-not $existing) {
+        Add-DnsServerResourceRecordPtr -ZoneName "0.16.172.in-addr.arpa" -Name "254" -PtrDomainName "fw.itnsa.id"
+    }
+
+# --- Set Root Hints to ONLY INET server ---
+- name: Set root hints to INET server only
+  ansible.windows.win_shell: |
+    # Remove all existing root hints
+    Get-DnsServerRootHint | Remove-DnsServerRootHint -Force
+    # Add only INET as root hint
+    Add-DnsServerRootHint -NameServer "inet.public.net" -IPAddress "{{ inet_ip }}"
+
+# --- Set Forwarder to ONLY INET server ---
+- name: Set DNS forwarder to INET server only
+  ansible.windows.win_shell: |
+    # Remove all existing forwarders
+    $forwarders = (Get-DnsServerForwarder).IPAddress
+    if ($forwarders) {
+        Remove-DnsServerForwarder -IPAddress $forwarders -Force
+    }
+    # Add only INET as forwarder
+    Add-DnsServerForwarder -IPAddress "{{ inet_ip }}"
