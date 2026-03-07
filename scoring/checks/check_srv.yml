@@ -32,7 +32,7 @@
   ansible.windows.win_shell: |
     $disks = @(Get-PhysicalDisk | Where-Object { $_.Size -gt 9GB -and $_.Size -lt 11GB }).Count
     $pool = @(Get-StoragePool | Where-Object { $_.FriendlyName -ne 'Primordial' }).Count
-    $rDrive = Test-Path "R:\"
+    $rDrive = Test-Path 'R:\'
     $fs = if($rDrive) { (Get-Volume -DriveLetter R -ErrorAction SilentlyContinue).FileSystemType } else { 'NONE' }
     Write-Output "disks=$disks,pool=$pool,r_exists=$rDrive,filesystem=$fs"
   register: raid_check
