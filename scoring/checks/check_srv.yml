@@ -18,7 +18,8 @@
 
 - name: "BC04 - Check SRV IP"
   ansible.windows.win_shell: |
-    (Get-NetIPAddress -InterfaceAlias "Ethernet0","Ethernet 0" -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress
+    $ip = Get-NetIPAddress -InterfaceAlias "Ethernet0","Ethernet 0" -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1
+    Write-Output $ip.IPAddress
   register: srv_ip
   ignore_errors: yes
 
@@ -30,24 +31,25 @@
 # ===== RAID =====
 - name: "RAID01-04 - Check RAID and R: drive"
   ansible.windows.win_shell: |
-    $disks = @(Get-PhysicalDisk | Where-Object { $_.Size -gt 9GB -and $_.Size -lt 11GB }).Count
-    $pool = @(Get-StoragePool | Where-Object { $_.FriendlyName -ne 'Primordial' }).Count
-    $rDrive = Test-Path R:
-    $fs = if($rDrive) { (Get-Volume -DriveLetter R -ErrorAction SilentlyContinue).FileSystemType } else { 'NONE' }
-    Write-Output "disks=$disks,pool=$pool,r_exists=$rDrive,filesystem=$fs"
+    $dc = @(Get-PhysicalDisk).Count
+    $sp = @(Get-StoragePool -IsPrimordial 0 -ErrorAction SilentlyContinue).Count
+    $rd = Test-Path R:
+    $ft = 'NONE'
+    if ($rd) { $ft = (Get-Volume -DriveLetter R -ErrorAction SilentlyContinue).FileSystemType }
+    Write-Output "disks=$dc,pool=$sp,r_exists=$rd,filesystem=$ft"
   register: raid_check
   ignore_errors: yes
   tags: raid
 
 - name: "RAID - Score disks"
   set_fact:
-    score_RAID01: "{{ 1 if 'disks=3' in (raid_check.stdout | default('')) or 'disks=4' in (raid_check.stdout | default('')) else 0 }}"
+    score_RAID01: "{{ 1 if 'disks=3' in (raid_check.stdout | default('')) or 'disks=4' in (raid_check.stdout | default('')) or 'disks=5' in (raid_check.stdout | default('')) else 0 }}"
   ignore_errors: yes
   tags: raid
 
 - name: "RAID - Score pool"
   set_fact:
-    score_RAID02: "{{ 2 if 'pool=1' in (raid_check.stdout | default('')) or 'pool=2' in (raid_check.stdout | default('')) else 0 }}"
+    score_RAID02: "{{ 2 if 'pool=1' in (raid_check.stdout | default('')) else 0 }}"
   ignore_errors: yes
   tags: raid
 
@@ -67,14 +69,12 @@
 # ===== FILE SERVICE =====
 - name: "FS01-04 - Check shares exist"
   ansible.windows.win_shell: |
-    $shares = @('Direksi','Manager','Karyawan','Home')
-    $results = @()
-    foreach ($s in $shares) {
-        $share = Get-SmbShare -Name $s -ErrorAction SilentlyContinue
-        $path = if($share) { $share.Path } else { 'N/A' }
-        $results += "$s=$(if($share){'EXISTS'}else{'MISSING'})|path=$path"
+    $out = ''
+    foreach ($n in @('Direksi','Manager','Karyawan','Home')) {
+        $s = Get-SmbShare -Name $n -ErrorAction SilentlyContinue
+        if ($s) { $out += "$n=EXISTS," } else { $out += "$n=MISSING," }
     }
-    $results -join ','
+    Write-Output $out
   register: fs_shares
   ignore_errors: yes
 
@@ -89,19 +89,15 @@
 
 - name: "FS05-08 - Check share permissions"
   ansible.windows.win_shell: |
-    $results = @()
-    $checks = @{
-        'Direksi' = 'ITNSA\\Direksi'
-        'Manager' = 'ITNSA\\Manager'
-        'Karyawan' = 'ITNSA\\Karyawan'
-        'Home' = 'ITNSA\\Domain Users'
+    $out = ''
+    $names = @('Direksi','Manager','Karyawan','Home')
+    $groups = @('Direksi','Manager','Karyawan','Domain Users')
+    for ($i = 0; $i -lt $names.Count; $i++) {
+        $perms = Get-SmbShareAccess -Name $names[$i] -ErrorAction SilentlyContinue
+        $ok = $perms | Where-Object { $_.AccountName -match $groups[$i] }
+        if ($ok) { $out += $names[$i] + '_perm=PASS,' } else { $out += $names[$i] + '_perm=FAIL,' }
     }
-    foreach ($s in $checks.Keys) {
-        $perms = Get-SmbShareAccess -Name $s -ErrorAction SilentlyContinue
-        $hasAccess = $perms | Where-Object { $_.AccountName -match $checks[$s].Replace('ITNSA\\','') }
-        $results += "${s}_perm=$(if($hasAccess){'PASS'}else{'FAIL'})"
-    }
-    $results -join ','
+    Write-Output $out
   register: fs_perms
   ignore_errors: yes
 
@@ -115,19 +111,16 @@
 
 - name: "FS09-10 - Check quotas"
   ansible.windows.win_shell: |
-    $results = @()
-    $paths = @{
-        'Direksi' = 'R:\Shares\Direksi'
-        'Manager' = 'R:\Shares\Manager'
-        'Karyawan' = 'R:\Shares\Karyawan'
-        'Home' = 'R:\Shares\Home'
+    $out = ''
+    $names = @('Direksi','Manager','Karyawan','Home')
+    foreach ($n in $names) {
+        $p = 'R:\Shares\' + $n
+        $q = Get-FsrmQuota -Path $p -ErrorAction SilentlyContinue
+        $mb = 0
+        if ($q) { $mb = [math]::Round($q.Size / 1MB) }
+        $out += $n + '_quota=' + $mb + 'MB,'
     }
-    foreach ($name in $paths.Keys) {
-        $q = Get-FsrmQuota -Path $paths[$name] -ErrorAction SilentlyContinue
-        $sizeMB = if($q) { [math]::Round($q.Size / 1MB) } else { 0 }
-        $results += "${name}_quota=${sizeMB}MB"
-    }
-    $results -join ','
+    Write-Output $out
   register: fs_quotas
   ignore_errors: yes
 
@@ -140,12 +133,14 @@
 
 - name: "FS11 - Check file screen"
   ansible.windows.win_shell: |
-    $screens = Get-FsrmFileScreen -ErrorAction SilentlyContinue
     $groups = Get-FsrmFileGroup -ErrorAction SilentlyContinue
-    $blocksBat = $groups | Where-Object { $_.IncludePattern -contains '*.bat' }
-    $blocksPs1 = $groups | Where-Object { $_.IncludePattern -contains '*.ps1' }
-    $screenCount = @($screens | Where-Object { $_.Path -like 'R:\Shares\*' }).Count
-    Write-Output "screens=$screenCount,bat=$([bool]$blocksBat),ps1=$([bool]$blocksPs1)"
+    $bat = $false
+    $ps1 = $false
+    if ($groups) {
+        $bat = ($groups | Where-Object { $_.IncludePattern -contains '*.bat' }) -ne $null
+        $ps1 = ($groups | Where-Object { $_.IncludePattern -contains '*.ps1' }) -ne $null
+    }
+    Write-Output "bat=$bat,ps1=$ps1"
   register: fs_screen
   ignore_errors: yes
 
@@ -169,30 +164,27 @@
 - name: "IIS02-07 - Check websites"
   ansible.windows.win_shell: |
     Import-Module WebAdministration -ErrorAction SilentlyContinue
-    $results = @()
-    # www.itnsa.id
+    $out = ''
     $www = Get-Website -Name "www.itnsa.id" -ErrorAction SilentlyContinue
-    $results += "www_exists=$([bool]$www)"
+    if ($www) { $out += 'www_exists=True,' } else { $out += 'www_exists=False,' }
     if ($www) {
-        $content = Get-Content "$($www.PhysicalPath)\index.html" -ErrorAction SilentlyContinue
-        $results += "www_content=$(if($content -match 'Welcome to www.itnsa.id'){'PASS'}else{'FAIL'})"
-        $sslBinding = Get-WebBinding -Name "www.itnsa.id" -Protocol https -ErrorAction SilentlyContinue
-        $results += "www_ssl=$([bool]$sslBinding)"
+        $c = Get-Content ($www.PhysicalPath + '\index.html') -ErrorAction SilentlyContinue
+        if ($c -match 'Welcome to www.itnsa.id') { $out += 'www_content=PASS,' } else { $out += 'www_content=FAIL,' }
+        $ssl = Get-WebBinding -Name "www.itnsa.id" -Protocol https -ErrorAction SilentlyContinue
+        if ($ssl) { $out += 'www_ssl=True,' } else { $out += 'www_ssl=False,' }
     }
-    # private.itnsa.id
     $priv = Get-Website -Name "private.itnsa.id" -ErrorAction SilentlyContinue
-    $results += "priv_exists=$([bool]$priv)"
+    if ($priv) { $out += 'priv_exists=True,' } else { $out += 'priv_exists=False,' }
     if ($priv) {
-        $content = Get-Content "$($priv.PhysicalPath)\index.html" -ErrorAction SilentlyContinue
-        $results += "priv_content=$(if($content -match 'Private site of itnsa.id'){'PASS'}else{'FAIL'})"
-        $sslBinding = Get-WebBinding -Name "private.itnsa.id" -Protocol https -ErrorAction SilentlyContinue
-        $results += "priv_ssl=$([bool]$sslBinding)"
-        # Check auth restriction
-        $winAuth = Get-WebConfigurationProperty -Filter "/system.webServer/security/authentication/windowsAuthentication" -PSPath "IIS:\" -Location "private.itnsa.id" -Name "enabled" -ErrorAction SilentlyContinue
-        $anonAuth = Get-WebConfigurationProperty -Filter "/system.webServer/security/authentication/anonymousAuthentication" -PSPath "IIS:\" -Location "private.itnsa.id" -Name "enabled" -ErrorAction SilentlyContinue
-        $results += "priv_winauth=$($winAuth.Value),priv_anon=$($anonAuth.Value)"
+        $c = Get-Content ($priv.PhysicalPath + '\index.html') -ErrorAction SilentlyContinue
+        if ($c -match 'Private site of itnsa.id') { $out += 'priv_content=PASS,' } else { $out += 'priv_content=FAIL,' }
+        $ssl = Get-WebBinding -Name "private.itnsa.id" -Protocol https -ErrorAction SilentlyContinue
+        if ($ssl) { $out += 'priv_ssl=True,' } else { $out += 'priv_ssl=False,' }
+        $wa = (Get-WebConfigurationProperty -Filter "/system.webServer/security/authentication/windowsAuthentication" -PSPath "IIS:\" -Location "private.itnsa.id" -Name "enabled" -ErrorAction SilentlyContinue).Value
+        $aa = (Get-WebConfigurationProperty -Filter "/system.webServer/security/authentication/anonymousAuthentication" -PSPath "IIS:\" -Location "private.itnsa.id" -Name "enabled" -ErrorAction SilentlyContinue).Value
+        $out += "priv_winauth=$wa,priv_anon=$aa"
     }
-    $results -join ','
+    Write-Output $out
   register: iis_sites
   ignore_errors: yes
 
