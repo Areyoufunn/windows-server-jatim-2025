@@ -13,6 +13,8 @@
 - name: "SCORING - Check DC (dc.itnsa.id)"
   hosts: dc_servers
   gather_facts: no
+  ignore_errors: yes
+  ignore_unreachable: yes
   tasks:
     - include_tasks: checks/check_dc.yml
 
@@ -63,6 +65,8 @@
 - name: "SCORING - Check SRV (srv.itnsa.id)"
   hosts: app_servers
   gather_facts: no
+  ignore_errors: yes
+  ignore_unreachable: yes
   tasks:
     - include_tasks: checks/check_srv.yml
 
@@ -101,6 +105,8 @@
 - name: "SCORING - Check FW (fw.itnsa.id)"
   hosts: firewall_servers
   gather_facts: no
+  ignore_errors: yes
+  ignore_unreachable: yes
   tasks:
     - include_tasks: checks/check_fw.yml
 
@@ -129,6 +135,8 @@
 - name: "SCORING - Check Workstation"
   hosts: workstations
   gather_facts: no
+  ignore_errors: yes
+  ignore_unreachable: yes
   tasks:
     - include_tasks: checks/check_workstation.yml
 
@@ -144,6 +152,7 @@
   hosts: localhost
   gather_facts: no
   connection: local
+  ignore_errors: yes
   tasks:
     - include_tasks: checks/check_ansible.yml
 
