@@ -114,7 +114,7 @@
     $out = ''
     $names = @('Direksi','Manager','Karyawan','Home')
     foreach ($n in $names) {
-        $p = 'R:\Shares\' + $n
+        $p = Join-Path 'R:\Shares' $n
         $q = Get-FsrmQuota -Path $p -ErrorAction SilentlyContinue
         $mb = 0
         if ($q) { $mb = [math]::Round($q.Size / 1MB) }
