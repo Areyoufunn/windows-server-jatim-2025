@@ -168,7 +168,8 @@
     $www = Get-Website -Name "www.itnsa.id" -ErrorAction SilentlyContinue
     if ($www) { $out += 'www_exists=True,' } else { $out += 'www_exists=False,' }
     if ($www) {
-        $c = Get-Content ($www.PhysicalPath + '\index.html') -ErrorAction SilentlyContinue
+        $p = Join-Path $www.PhysicalPath 'index.html'
+        $c = Get-Content $p -ErrorAction SilentlyContinue
         if ($c -match 'Welcome to www.itnsa.id') { $out += 'www_content=PASS,' } else { $out += 'www_content=FAIL,' }
         $ssl = Get-WebBinding -Name "www.itnsa.id" -Protocol https -ErrorAction SilentlyContinue
         if ($ssl) { $out += 'www_ssl=True,' } else { $out += 'www_ssl=False,' }
@@ -176,13 +177,14 @@
     $priv = Get-Website -Name "private.itnsa.id" -ErrorAction SilentlyContinue
     if ($priv) { $out += 'priv_exists=True,' } else { $out += 'priv_exists=False,' }
     if ($priv) {
-        $c = Get-Content ($priv.PhysicalPath + '\index.html') -ErrorAction SilentlyContinue
+        $p = Join-Path $priv.PhysicalPath 'index.html'
+        $c = Get-Content $p -ErrorAction SilentlyContinue
         if ($c -match 'Private site of itnsa.id') { $out += 'priv_content=PASS,' } else { $out += 'priv_content=FAIL,' }
         $ssl = Get-WebBinding -Name "private.itnsa.id" -Protocol https -ErrorAction SilentlyContinue
         if ($ssl) { $out += 'priv_ssl=True,' } else { $out += 'priv_ssl=False,' }
-        $wa = (Get-WebConfigurationProperty -Filter "/system.webServer/security/authentication/windowsAuthentication" -PSPath "IIS:\" -Location "private.itnsa.id" -Name "enabled" -ErrorAction SilentlyContinue).Value
-        $aa = (Get-WebConfigurationProperty -Filter "/system.webServer/security/authentication/anonymousAuthentication" -PSPath "IIS:\" -Location "private.itnsa.id" -Name "enabled" -ErrorAction SilentlyContinue).Value
-        $out += "priv_winauth=$wa,priv_anon=$aa"
+        $winauth = & $env:SystemRoot\system32\inetsrv\appcmd.exe list config "private.itnsa.id" /section:windowsAuthentication /text:enabled 2>$null
+        $anonauth = & $env:SystemRoot\system32\inetsrv\appcmd.exe list config "private.itnsa.id" /section:anonymousAuthentication /text:enabled 2>$null
+        $out += "priv_winauth=$winauth,priv_anon=$anonauth"
     }
     Write-Output $out
   register: iis_sites
