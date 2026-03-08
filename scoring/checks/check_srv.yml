@@ -182,9 +182,11 @@
         if ($c -match 'Private site of itnsa.id') { $out += 'priv_content=PASS,' } else { $out += 'priv_content=FAIL,' }
         $ssl = Get-WebBinding -Name "private.itnsa.id" -Protocol https -ErrorAction SilentlyContinue
         if ($ssl) { $out += 'priv_ssl=True,' } else { $out += 'priv_ssl=False,' }
-        $winauth = & $env:SystemRoot\system32\inetsrv\appcmd.exe list config "private.itnsa.id" /section:windowsAuthentication /text:enabled 2>$null
-        $anonauth = & $env:SystemRoot\system32\inetsrv\appcmd.exe list config "private.itnsa.id" /section:anonymousAuthentication /text:enabled 2>$null
-        $out += "priv_winauth=$winauth,priv_anon=$anonauth"
+        $iisPath = Join-Path $env:SystemRoot 'system32\inetsrv\appcmd.exe'
+        $waRaw = & $iisPath list config "private.itnsa.id" /section:windowsAuthentication /text:enabled 2>$null
+        $aaRaw = & $iisPath list config "private.itnsa.id" /section:anonymousAuthentication /text:enabled 2>$null
+        if ($waRaw -eq 'true') { $out += 'priv_winauth=True,' } else { $out += 'priv_winauth=False,' }
+        if ($aaRaw -eq 'false') { $out += 'priv_anon=False' } else { $out += 'priv_anon=True' }
     }
     Write-Output $out
   register: iis_sites
