@@ -206,8 +206,15 @@
 
 - name: "DNS10-11 - Check root hints and forwarders"
   ansible.windows.win_shell: |
-    $rh = (Get-DnsServerRootHint | ForEach-Object { $_.IPAddress.IPAddressToString }) -join ','
-    $fwd = ((Get-DnsServerForwarder).IPAddress.IPAddressToString) -join ','
+    $ips = @()
+    $hints = Get-DnsServerRootHint -ErrorAction SilentlyContinue
+    foreach ($h in $hints) {
+        foreach ($r in $h.NameServer.RecordData) {
+            $ips += $r.IPv4Address.IPAddressToString
+        }
+    }
+    $rh = $ips -join ','
+    $fwd = ((Get-DnsServerForwarder -ErrorAction SilentlyContinue).IPAddress.IPAddressToString) -join ','
     Write-Output "roothints=$rh|forwarders=$fwd"
   register: dns_config
   ignore_errors: yes
